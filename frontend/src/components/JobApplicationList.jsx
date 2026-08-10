@@ -2,11 +2,16 @@ import JobApplicationRow from './JobApplicationRow'
 
 const TH = 'px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-ink-soft'
 
-export default function JobApplicationList({ jobApplications, onEdit, onDelete }) {
+export default function JobApplicationList({
+  jobApplications,
+  onEdit,
+  onDelete,
+  emptyMessage = 'No job applications yet — add one above.',
+}) {
   if (jobApplications.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-ink-soft">
-        No job applications yet — add one above.
+        {emptyMessage}
       </p>
     )
   }

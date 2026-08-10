@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   createJobApplication,
   deleteJobApplication,
@@ -6,9 +6,19 @@ import {
   updateJobApplication,
 } from '../api/jobApplications'
 import ExtractPostingCard from './ExtractPostingCard'
+import JobApplicationFilters from './JobApplicationFilters'
 import JobApplicationForm from './JobApplicationForm'
 import JobApplicationList from './JobApplicationList'
 import PipelineSummary from './PipelineSummary'
+
+// null-safe descending compare — nulls (e.g. no salary given) sort last
+// regardless of direction, rather than being treated as 0/smallest.
+function compareNullsLast(a, b) {
+  if (a == null && b == null) return 0
+  if (a == null) return 1
+  if (b == null) return -1
+  return b - a
+}
 
 // The actual tracker UI — everything that requires being logged in.
 // Split out from App.jsx (Phase 6) so App.jsx can stay focused on the
@@ -20,6 +30,42 @@ export default function Tracker({ currentUser, onLogout }) {
   const [editingApplication, setEditingApplication] = useState(null) // null = create mode
   const [draftValues, setDraftValues] = useState(null) // Phase 5 extraction result, create mode only
   const [draftNonce, setDraftNonce] = useState(0) // forces the form to remount when a new draft arrives
+
+  // Phase 7: client-side, deliberately — the dataset a personal tracker
+  // holds is small enough that a search/filter/sort API would be more
+  // machinery than the problem needs (see Roadmap.md Phase 3/7 notes on
+  // deferring this exact thing until it was actually worth building).
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState(null) // null = all statuses
+  const [sortBy, setSortBy] = useState('newest')
+
+  const visibleJobApplications = useMemo(() => {
+    const query = search.trim().toLowerCase()
+
+    const filtered = jobApplications.filter((app) => {
+      const matchesSearch =
+        query === '' || app.company.toLowerCase().includes(query) || app.role.toLowerCase().includes(query)
+      const matchesStatus = statusFilter === null || app.status === statusFilter
+      return matchesSearch && matchesStatus
+    })
+
+    const sorted = [...filtered]
+    switch (sortBy) {
+      case 'oldest':
+        sorted.reverse() // API already returns newest-first; reversing is enough, no date parsing needed
+        break
+      case 'company':
+        sorted.sort((a, b) => a.company.localeCompare(b.company))
+        break
+      case 'salary':
+        sorted.sort((a, b) => compareNullsLast(a.salary_max, b.salary_max))
+        break
+      // 'newest' is the list's natural order already — nothing to do
+    }
+    return sorted
+  }, [jobApplications, search, statusFilter, sortBy])
+
+  const isFiltered = search.trim() !== '' || statusFilter !== null
 
   useEffect(() => {
     listJobApplications()
@@ -118,11 +164,21 @@ export default function Tracker({ currentUser, onLogout }) {
 
         {!loading && !loadError && (
           <div className="mt-4 space-y-4">
-            <PipelineSummary jobApplications={jobApplications} />
-            <JobApplicationList
+            <PipelineSummary
               jobApplications={jobApplications}
+              activeStatus={statusFilter}
+              onSelectStatus={setStatusFilter}
+            />
+            <JobApplicationFilters search={search} onSearchChange={setSearch} sortBy={sortBy} onSortChange={setSortBy} />
+            <JobApplicationList
+              jobApplications={visibleJobApplications}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              emptyMessage={
+                isFiltered
+                  ? 'No applications match your search/filter.'
+                  : 'No job applications yet — add one above.'
+              }
             />
           </div>
         )}
