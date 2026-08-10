@@ -10,8 +10,14 @@ namespace App\Enums;
  */
 enum ApplicationStatus: string
 {
+    // Actively preparing but not submitted yet — on hold / in progress
+    // (e.g. drafting a cover letter). The default for a brand-new entry.
     case Saved = 'saved';
+
+    // Submitted — now waiting on a response. Distinct from Saved: the
+    // application itself has actually gone out.
     case Applied = 'applied';
+
     case Interviewing = 'interviewing';
     case Offer = 'offer';
     case Rejected = 'rejected';

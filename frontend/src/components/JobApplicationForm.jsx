@@ -4,8 +4,8 @@ import { STATUS_OPTIONS } from '../statuses'
 const EMPTY_VALUES = {
   company: '',
   role: '',
-  status: 'saved', // sensible default for a brand-new entry — see Roadmap.md
-  // Phase 2's "open question" note on default status.
+  status: 'saved', // "Saved" = actively preparing but not submitted yet — the
+  // correct default for a brand-new entry. See Roadmap.md Phase 2.
   salary_min: '',
   salary_max: '',
   posting_url: '',
