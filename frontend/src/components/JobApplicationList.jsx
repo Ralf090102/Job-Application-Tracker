@@ -20,6 +20,7 @@ export default function JobApplicationList({ jobApplications, onEdit, onDelete }
             <th className={TH}>Role</th>
             <th className={TH}>Status</th>
             <th className={TH}>Salary</th>
+            <th className={TH}>Location</th>
             <th className={TH}>Actions</th>
           </tr>
         </thead>

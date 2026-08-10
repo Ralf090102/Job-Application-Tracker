@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\ApplicationStatus;
+use App\Enums\WorkMode;
 use App\Models\JobApplication;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -29,6 +30,9 @@ class JobApplicationFactory extends Factory
             'salary_max' => $salaryMax,
             'posting_url' => $this->faker->url(),
             'posting_text' => $this->faker->paragraphs(3, true),
+            'location' => $this->faker->city(),
+            'work_mode' => $this->faker->randomElement(WorkMode::cases()),
+            'red_flags' => $this->faker->boolean(20) ? [$this->faker->sentence()] : [],
             'notes' => $this->faker->optional()->sentence(),
         ];
     }

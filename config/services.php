@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    // Phase 5's job-posting extraction (App\Services\OllamaJobPostingExtractor).
+    // Local, no API key — unlike everything else in this file.
+    'ollama' => [
+        'url' => env('OLLAMA_URL', 'http://localhost:11434'),
+        'model' => env('OLLAMA_MODEL', 'mistral:latest'),
+    ],
+
 ];

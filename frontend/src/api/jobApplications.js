@@ -26,3 +26,13 @@ export function updateJobApplication(id, payload) {
 export function deleteJobApplication(id) {
   return apiFetch(`/api/job-applications/${id}`, { method: 'DELETE' })
 }
+
+// Phase 5: does NOT create a record — returns suggested fields for review.
+// Local model inference can take 20-50s; no client-side timeout override
+// here, apiFetch just waits (the button shows a "this takes a while" hint).
+export function extractJobPosting(postingText) {
+  return apiFetch('/api/job-applications/extract', {
+    method: 'POST',
+    body: JSON.stringify({ posting_text: postingText }),
+  }).then((json) => json.data)
+}

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ApplicationStatus;
+use App\Enums\WorkMode;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -19,6 +20,9 @@ class JobApplication extends Model
         'salary_max',
         'posting_url',
         'posting_text',
+        'location',
+        'work_mode',
+        'red_flags',
         'notes',
     ];
 
@@ -28,6 +32,8 @@ class JobApplication extends Model
             'status' => ApplicationStatus::class,
             'salary_min' => 'integer',
             'salary_max' => 'integer',
+            'work_mode' => WorkMode::class,
+            'red_flags' => 'array', // JSON column <-> PHP array, automatic
         ];
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\ApplicationStatus;
+use App\Enums\WorkMode;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Enum;
 
@@ -33,6 +34,10 @@ class StoreJobApplicationRequest extends FormRequest
             'salary_max' => ['nullable', 'integer', 'min:0', 'max:1000000', 'gte:salary_min'],
             'posting_url' => ['nullable', 'url', 'max:2048'],
             'posting_text' => ['nullable', 'string'],
+            'location' => ['nullable', 'string', 'max:255'],
+            'work_mode' => ['nullable', new Enum(WorkMode::class)],
+            'red_flags' => ['nullable', 'array'],
+            'red_flags.*' => ['string'],
             'notes' => ['nullable', 'string'],
         ];
     }

@@ -22,9 +22,23 @@ export default function JobApplicationRow({ jobApplication, onEdit, onDelete }) 
     }
   }
 
+  const redFlags = jobApplication.red_flags ?? []
+
   return (
     <tr className="transition-colors hover:bg-paper/60">
-      <td className="px-4 py-3 font-medium text-ink">{jobApplication.company}</td>
+      <td className="px-4 py-3 font-medium text-ink">
+        <div className="flex items-center gap-2">
+          {jobApplication.company}
+          {redFlags.length > 0 && (
+            <span
+              className="inline-flex items-center rounded-full bg-status-rejected/10 px-1.5 py-0.5 text-xs font-medium text-status-rejected"
+              title={redFlags.join('\n')}
+            >
+              ⚠ {redFlags.length}
+            </span>
+          )}
+        </div>
+      </td>
       <td className="px-4 py-3 text-ink-soft">{jobApplication.role}</td>
       <td className="px-4 py-3">
         <StatusBadge status={jobApplication.status} />
@@ -33,6 +47,17 @@ export default function JobApplicationRow({ jobApplication, onEdit, onDelete }) 
         {jobApplication.salary_min && jobApplication.salary_max
           ? `${jobApplication.salary_min.toLocaleString()} – ${jobApplication.salary_max.toLocaleString()}`
           : '—'}
+      </td>
+      <td className="px-4 py-3 text-ink-soft">
+        {jobApplication.location || jobApplication.work_mode ? (
+          <>
+            {jobApplication.location}
+            {jobApplication.location && jobApplication.work_mode && ' · '}
+            {jobApplication.work_mode && jobApplication.work_mode[0].toUpperCase() + jobApplication.work_mode.slice(1)}
+          </>
+        ) : (
+          '—'
+        )}
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
