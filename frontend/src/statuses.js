@@ -3,13 +3,18 @@
 // this one — if a case is ever added/renamed in the PHP enum, this list
 // has to be updated by hand to match. (A `GET /api/statuses` endpoint
 // would remove that duplication; not worth it yet for six fixed values.)
+//
+// Colors match the --color-status-* tokens in index.css. Duplicated
+// rather than read from CSS because these drive inline styles (dynamic
+// per-row data, which Tailwind's class-scanning can't pick up) — see
+// StatusBadge and PipelineSummary.
 export const STATUS_OPTIONS = [
-  { value: 'saved', label: 'Saved', color: '#6b7280' },
-  { value: 'applied', label: 'Applied', color: '#2563eb' },
-  { value: 'interviewing', label: 'Interviewing', color: '#d97706' },
-  { value: 'offer', label: 'Offer', color: '#16a34a' },
-  { value: 'rejected', label: 'Rejected', color: '#dc2626' },
-  { value: 'withdrawn', label: 'Withdrawn', color: '#78716c' },
+  { value: 'saved', label: 'Saved', color: '#8b8578' },
+  { value: 'applied', label: 'Applied', color: '#3b6ea8' },
+  { value: 'interviewing', label: 'Interviewing', color: '#c17f2c' },
+  { value: 'offer', label: 'Offer', color: '#3f7d4c' },
+  { value: 'rejected', label: 'Rejected', color: '#a64444' },
+  { value: 'withdrawn', label: 'Withdrawn', color: '#6b6560' },
 ]
 
 export function statusLabel(value) {

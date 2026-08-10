@@ -1,31 +1,39 @@
 import JobApplicationRow from './JobApplicationRow'
 
+const TH = 'px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-ink-soft'
+
 export default function JobApplicationList({ jobApplications, onEdit, onDelete }) {
   if (jobApplications.length === 0) {
-    return <p>No job applications yet — add one above.</p>
+    return (
+      <p className="rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-ink-soft">
+        No job applications yet — add one above.
+      </p>
+    )
   }
 
   return (
-    <table>
-      <thead>
-        <tr>
-          <th>Company</th>
-          <th>Role</th>
-          <th>Status</th>
-          <th>Salary</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {jobApplications.map((jobApplication) => (
-          <JobApplicationRow
-            key={jobApplication.id}
-            jobApplication={jobApplication}
-            onEdit={onEdit}
-            onDelete={onDelete}
-          />
-        ))}
-      </tbody>
-    </table>
+    <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+      <table className="w-full min-w-[640px] border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-line">
+            <th className={TH}>Company</th>
+            <th className={TH}>Role</th>
+            <th className={TH}>Status</th>
+            <th className={TH}>Salary</th>
+            <th className={TH}>Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line">
+          {jobApplications.map((jobApplication) => (
+            <JobApplicationRow
+              key={jobApplication.id}
+              jobApplication={jobApplication}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
