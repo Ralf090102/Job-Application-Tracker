@@ -4,12 +4,34 @@ namespace Tests\Feature;
 
 use App\Enums\ApplicationStatus;
 use App\Models\JobApplication;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class JobApplicationApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Phase 6: every job-applications route now requires auth. actingAs()
+        // sets the guard directly — no need to exercise the real login flow
+        // (session cookie, CSRF) in tests that are really about the CRUD
+        // logic; that flow gets its own coverage in AuthTest.
+        $this->actingAs(User::factory()->create());
+    }
+
+    public function test_unauthenticated_requests_are_rejected(): void
+    {
+        // The one test in this class that deliberately does NOT act as a
+        // user — proves the middleware is actually doing something, not
+        // just that the rest of these tests happen to pass.
+        auth()->logout();
+
+        $this->getJson('/api/job-applications')->assertUnauthorized();
+    }
 
     public function test_index_returns_all_job_applications(): void
     {

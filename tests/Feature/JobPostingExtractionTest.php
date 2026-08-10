@@ -4,12 +4,21 @@ namespace Tests\Feature;
 
 use App\Contracts\JobPostingExtractor;
 use App\Exceptions\JobPostingExtractionException;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class JobPostingExtractionTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Phase 6: this endpoint is behind auth:sanctum now too.
+        $this->actingAs(User::factory()->create());
+    }
 
     public function test_extracts_structured_fields_from_posting_text(): void
     {

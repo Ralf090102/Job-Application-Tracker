@@ -17,9 +17,12 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
+        // Password is the factory default — the literal string "password",
+        // bcrypt-hashed. Single-user personal tool, not multi-tenant (see
+        // Roadmap.md Phase 6) — one seeded account is genuinely enough.
         User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+            'name' => 'Ralf',
+            'email' => 'ralf.hernandez090102@gmail.com',
         ]);
 
         $this->call(JobApplicationSeeder::class);

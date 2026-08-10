@@ -2,9 +2,9 @@
 // backend should go through this instead of hardcoding the base URL or
 // repeating fetch boilerplate in every component.
 //
-// `credentials: 'include'` is set now, ahead of Phase 6 (Sanctum SPA auth),
-// so cookies are sent/received cross-origin once auth is wired up. It's a
-// no-op for unauthenticated requests like Phase 1's /api/ping.
+// `credentials: 'include'` sends/receives cookies cross-origin — the
+// session cookie Phase 6's auth relies on, and the XSRF-TOKEN cookie read
+// below. A no-op for unauthenticated requests like Phase 1's /api/ping.
 
 const API_URL = import.meta.env.VITE_API_URL
 
@@ -14,12 +14,25 @@ if (!API_URL) {
   throw new Error('VITE_API_URL is not set — copy frontend/.env.example to frontend/.env')
 }
 
+// Sanctum's CSRF cookie (set by GET /sanctum/csrf-cookie) isn't HttpOnly —
+// it's readable JS specifically so it can be echoed back as a header.
+// Laravel's own axios defaults do exactly this; we're on plain fetch, so
+// it has to happen by hand, in one place, rather than in every call site.
+function xsrfTokenFromCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)
+  return match ? decodeURIComponent(match[1]) : null
+}
+
 export async function apiFetch(path, options = {}) {
+  const method = (options.method ?? 'GET').toUpperCase()
+  const xsrfToken = method !== 'GET' ? xsrfTokenFromCookie() : null
+
   const response = await fetch(`${API_URL}${path}`, {
     credentials: 'include',
     headers: {
       Accept: 'application/json',
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(xsrfToken ? { 'X-XSRF-TOKEN': xsrfToken } : {}),
       ...options.headers,
     },
     ...options,
