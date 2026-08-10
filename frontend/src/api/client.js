@@ -25,9 +25,20 @@ export async function apiFetch(path, options = {}) {
     ...options,
   })
 
+  // 204 No Content (DELETE) has no body — response.json() would throw
+  // trying to parse an empty string as JSON.
+  const hasBody = response.status !== 204 && response.headers.get('content-length') !== '0'
+  const data = hasBody ? await response.json() : null
+
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+    // Laravel's validation-failure body is {message, errors: {field: [msgs]}}.
+    // Attach both so callers (e.g. a form) can show field-specific errors
+    // instead of just a generic failure message.
+    const error = new Error(data?.message || `API request failed: ${response.status} ${response.statusText}`)
+    error.status = response.status
+    error.errors = data?.errors ?? null
+    throw error
   }
 
-  return response.json()
+  return data
 }
