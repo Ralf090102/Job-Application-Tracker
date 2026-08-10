@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\JobApplicationController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -13,3 +14,7 @@ Route::get('/ping', function () {
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
+
+// Phase 3: index/store/show/update/destroy, all under /api/job-applications.
+// Not behind auth yet — that's Phase 6, deliberately last per the roadmap.
+Route::apiResource('job-applications', JobApplicationController::class);
