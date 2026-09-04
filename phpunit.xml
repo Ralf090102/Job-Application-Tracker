@@ -29,6 +29,12 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <!-- v2 Phase 3: blank so ResumeTailoringService::process() no-ops
+             (it checks for an empty vault path and returns early) instead
+             of reading the real Eru vault during the suite. Tests that
+             need real tailoring behavior override this per-test with a
+             fixture vault path — see ResumeTailoringServiceTest. -->
+        <env name="ERU_VAULT_PATH" value=""/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

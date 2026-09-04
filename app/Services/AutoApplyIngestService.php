@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Contracts\JobPostingMatcher;
+use App\Enums\AutoApplyCandidateStatus;
 use App\Enums\WorkMode;
 use App\Exceptions\JobPostingMatchException;
 use App\Models\AutoApplyCandidate;
@@ -22,7 +23,10 @@ use Illuminate\Support\Facades\Log;
  */
 class AutoApplyIngestService
 {
-    public function __construct(private JobPostingMatcher $matcher) {}
+    public function __construct(
+        private JobPostingMatcher $matcher,
+        private ResumeTailoringService $tailoringService,
+    ) {}
 
     /**
      * @param  array<int, array<string, mixed>>  $rawPostings  raw JSearch posting objects
@@ -86,11 +90,23 @@ class AutoApplyIngestService
 
             $candidate = AutoApplyCandidate::create([
                 ...$posting,
+                // The migration's column default is 'discovered' — a
+                // posting that made it here already passed both the
+                // deterministic and LLM matching passes, so it belongs at
+                // 'matched', not the default (JAT-Roadmap-AutoApply.md
+                // Phase 2: "matches move to matched").
+                'status' => AutoApplyCandidateStatus::Matched,
                 'match_reasoning' => $reasoning,
             ]);
 
+            // Phase 3: tailor + render immediately, same continuous chain
+            // as the Architecture section describes. Never throws — a
+            // tailoring/render failure just leaves the candidate at
+            // 'matched' rather than aborting this whole ingest batch.
+            $this->tailoringService->process($candidate);
+
             $summary['matched']++;
-            $summary['candidates'][] = $candidate;
+            $summary['candidates'][] = $candidate->fresh();
         }
 
         return $summary;

@@ -76,7 +76,7 @@ class AutoApplyIngestTest extends TestCase
             'posting_url' => 'https://indeed.com/viewjob?jk=abc123',
             'company' => 'Acme Corp',
             'role' => 'Backend Developer',
-            'status' => 'discovered',
+            'status' => 'matched',
         ]);
     }
 

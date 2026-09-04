@@ -63,4 +63,18 @@ return [
         'ingest_token' => env('AUTO_APPLY_INGEST_TOKEN'),
     ],
 
+    // v2 Phase 3 — where ResumeTailoringService reads resume/portfolio
+    // source material from. Not this project's own repo — a sibling
+    // Obsidian vault, single-machine personal tool, no portability
+    // concern (JAT-Roadmap-AutoApply.md Phase 3).
+    'eru' => [
+        'vault_path' => env('ERU_VAULT_PATH'),
+    ],
+
+    // v2 Phase 3 — the Proteus CLI (D:\GitHub\Proteus, `uv tool install .`)
+    // used to render tailored resume Markdown to PDF.
+    'proteus' => [
+        'bin' => env('PROTEUS_BIN', 'proteus'),
+    ],
+
 ];

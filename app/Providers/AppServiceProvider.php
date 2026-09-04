@@ -4,8 +4,12 @@ namespace App\Providers;
 
 use App\Contracts\JobPostingExtractor;
 use App\Contracts\JobPostingMatcher;
+use App\Contracts\PdfRenderer;
+use App\Contracts\ResumeTailor;
 use App\Services\OllamaJobPostingExtractor;
 use App\Services\OllamaJobPostingMatcher;
+use App\Services\OllamaResumeTailor;
+use App\Services\ProteusPdfRenderer;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -22,6 +26,10 @@ class AppServiceProvider extends ServiceProvider
 
         // v2 Phase 2: same reasoning — see tests/Feature/AutoApplyIngestTest.php.
         $this->app->bind(JobPostingMatcher::class, OllamaJobPostingMatcher::class);
+
+        // v2 Phase 3: same reasoning — see tests/Feature/ResumeTailoringServiceTest.php.
+        $this->app->bind(ResumeTailor::class, OllamaResumeTailor::class);
+        $this->app->bind(PdfRenderer::class, ProteusPdfRenderer::class);
     }
 
     /**
