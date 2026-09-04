@@ -27,6 +27,28 @@ agent's own operating rules require the latter, not the former, and that
 requirement is non-negotiable. If you find yourself constructing a reason
 this particular case doesn't need to ask — it does. Ask anyway.
 
+## Pacing and anomaly handling (v2 Phase 6)
+
+Two rules that apply across every browser step below (4 through 7), not
+just wherever they're mentioned:
+
+- **Pace actions, don't machine-gun them.** Between distinct browser
+  actions during Step 5's form-fill (each field, each click), insert a
+  short, varied pause (roughly 1-3 seconds — vary it, don't use the exact
+  same interval every time) rather than firing actions back-to-back as
+  fast as the tool allows. This is not stealth/anti-detection engineering
+  (explicitly out of scope, JAT-Roadmap-AutoApply.md Decided Against) —
+  it's just not behaving like a script hammering a form, which is a
+  reasonable baseline regardless of whether anything is watching for it.
+- **Any CAPTCHA, verification challenge, unexpected redirect, rate-limit
+  page, unusually slow load, or otherwise anomalous page state — at any
+  point in Steps 4 through 7 — stops the run for this candidate
+  immediately.** Report exactly what you saw to the human. Never attempt
+  to solve, wait out, silently retry, or route around it. This is a hard
+  stop-and-report, not a retry-with-backoff — retrying a strange page
+  state automatically is itself the kind of bot-like behavior this rule
+  exists to avoid.
+
 ## Prerequisites
 
 - Laravel API running locally (`php artisan serve`, default `http://localhost:8000`).
@@ -37,7 +59,19 @@ this particular case doesn't need to ask — it does. Ask anyway.
 - `ERU_VAULT_PATH` readable from `.env`, for reading each resume variant's
   base source Markdown (`{ERU_VAULT_PATH}/02-Areas/Career/Resumes/Resume-{variant}.md`).
 
-## Step 1 — Fetch the queue
+## Step 1 — Check today's cap, then fetch the queue
+
+```
+GET {APP_URL}/api/auto-apply/candidates/cap-status
+Header: X-Ingest-Token: {AUTO_APPLY_INGEST_TOKEN}
+```
+
+Returns `{"cap": N, "submitted_today": N, "remaining": N}` (v2 Phase 6).
+Tell the human the remaining count up front. If `remaining` is already 0:
+say so plainly and stop — don't drive any candidate through Steps 4-6
+today, even to "just fill the form and see." Reviewing/rejecting/editing
+is still fine at any remaining count, including 0; only the real Indeed
+submit step is gated by the cap.
 
 ```
 GET {APP_URL}/api/auto-apply/candidates?status=ready_for_review
@@ -107,12 +141,8 @@ Navigate to `posting_url` with claude-in-chrome and read the page.
   applications"): tell the human, stop for this candidate, leave it as
   `ready_for_review` (or ask the human whether to reject it as stale — do
   not decide that yourself).
-- If a CAPTCHA or another hard verification challenge appears at any
-  point in this flow: **stop immediately and report it to the human.**
-  Do not attempt to solve it, wait it out, retry, or route around it in
-  any way — this is explicitly out of scope
-  (JAT-Roadmap-AutoApply.md, Decided Against). This applies even if it
-  appears mid-form, not just on initial navigation.
+- CAPTCHAs and other anomalous page states: see "Pacing and anomaly
+  handling" above — it applies here and through every step that follows.
 
 ## Step 5 — Fill the Easy Apply form
 
@@ -143,9 +173,23 @@ final Submit button and re-read **THE ONE RULE** at the top of this file.
 
 ## Step 6 — The pre-submit confirmation gate
 
-Tell the human exactly what is about to happen (company, role, that this
-is the real, final Easy Apply submission, not a preview) and ask directly:
-**"Ready for me to submit this?"**
+Re-check the cap first — time has passed since Step 1, and if this is a
+later candidate in the same run, earlier submits in *this* session may
+have used up remaining capacity:
+
+```
+GET {APP_URL}/api/auto-apply/candidates/cap-status
+Header: X-Ingest-Token: {AUTO_APPLY_INGEST_TOKEN}
+```
+
+If `remaining` is 0: stop here, before clicking anything. Tell the human
+the cap was reached during this session and this candidate's form is
+filled but won't be submitted today — leave it for tomorrow rather than
+submitting it for real now.
+
+Otherwise, tell the human exactly what is about to happen (company, role,
+that this is the real, final Easy Apply submission, not a preview) and
+ask directly: **"Ready for me to submit this?"**
 
 - If the human says anything other than a clear yes: stop, don't submit,
   ask what they want instead (edit something and retry, abandon this
@@ -170,3 +214,17 @@ If the submit click appears to fail or the outcome is ambiguous: do not
 call the submit API (it would create a `JobApplication` for something
 that may not have actually gone through) — tell the human what you saw
 and ask how to proceed.
+
+**If the submit API itself still returns 429** at this point (it
+shouldn't, in normal use — Steps 1 and 6 already checked `cap-status`
+first, so this means the cap was reached by something else in the gap
+between that check and this call): the real Easy Apply submission on
+Indeed has *already gone through* — the cap only blocks recording it,
+which is itself worth flagging to the human as a gap, not silently
+absorbed. Tell the human plainly: the application was actually submitted
+on Indeed, but hit today's cap and could not be recorded as a
+`JobApplication` — they may want to add it manually. Then **stop the
+queue for the rest of today** — do not attempt further candidates'
+submits once the cap is hit, even if more remain `ready_for_review`.
+Reviewing/rejecting/editing remaining candidates is
+still fine; only the submit step is capped.

@@ -63,9 +63,15 @@ return [
     | will be used by the PHP date and date-time functions. The timezone
     | is set to "UTC" by default as it is suitable for most use cases.
     |
+    | v2 Phase 6: overridden to Asia/Manila by default — the auto-apply
+    | daily cap (AUTO_APPLY_DAILY_CAP) resets at "today" as Laravel sees
+    | it, and n8n's own Schedule Trigger already runs on Asia/Manila. A
+    | UTC "today" would reset the cap at 8am Manila time instead of
+    | midnight, an 8-hour drift from the user's actual day.
+    |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'Asia/Manila'),
 
     /*
     |--------------------------------------------------------------------------

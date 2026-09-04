@@ -54,6 +54,27 @@ class AutoApplyCandidateController extends Controller
     }
 
     /**
+     * GET /api/auto-apply/candidates/cap-status
+     *
+     * v2 Phase 6: lets the jat-review-queue skill check remaining daily
+     * capacity *before* driving a real Indeed submission — not just
+     * finding out via a 429 after the real click already happened. "Enforced
+     * before any submit fires" means before the real submit, not only
+     * before the record of it — this is what makes that true in practice.
+     */
+    public function capStatus()
+    {
+        $cap = (int) config('services.auto_apply.daily_cap');
+        $submittedToday = $this->submittedToday();
+
+        return response()->json([
+            'cap' => $cap,
+            'submitted_today' => $submittedToday,
+            'remaining' => max(0, $cap - $submittedToday),
+        ]);
+    }
+
+    /**
      * POST /api/auto-apply/candidates/{candidate}/reject
      *
      * Human rejected during review — terminal; no JobApplication is ever
@@ -94,6 +115,21 @@ class AutoApplyCandidateController extends Controller
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        // v2 Phase 6: the daily cap is enforced here too, not just
+        // documented as a convention — belt-and-suspenders alongside the
+        // skill checking GET .../cap-status before ever driving a real
+        // Indeed submission. A candidate beyond the cap never becomes a
+        // real JobApplication, full stop, even if the skill's own
+        // pre-check was somehow skipped or stale.
+        $cap = (int) config('services.auto_apply.daily_cap');
+        $submittedToday = $this->submittedToday();
+
+        if ($submittedToday >= $cap) {
+            return response()->json([
+                'message' => "Daily auto-apply cap reached ({$submittedToday}/{$cap} submitted today). Try again tomorrow.",
+            ], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
         $jobApplication = DB::transaction(function () use ($candidate) {
             $jobApplication = JobApplication::create([
                 'company' => $candidate->company,
@@ -117,6 +153,20 @@ class AutoApplyCandidateController extends Controller
         return (new JobApplicationResource($jobApplication))
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
+    }
+
+    /**
+     * "Submitted today" — read off Submitted candidates' updated_at, since
+     * status flip is the only thing that ever touches a candidate after
+     * it's Submitted (terminal), so no separate submitted_at column is
+     * needed. "Today" is app.timezone (Asia/Manila by default, matching
+     * n8n's own schedule), not UTC.
+     */
+    private function submittedToday(): int
+    {
+        return AutoApplyCandidate::where('status', AutoApplyCandidateStatus::Submitted)
+            ->whereDate('updated_at', today())
+            ->count();
     }
 
     /**

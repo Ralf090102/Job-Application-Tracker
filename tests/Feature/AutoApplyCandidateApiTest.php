@@ -7,6 +7,7 @@ use App\Enums\WorkMode;
 use App\Models\AutoApplyCandidate;
 use App\Models\JobApplication;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AutoApplyCandidateApiTest extends TestCase
@@ -48,6 +49,35 @@ class AutoApplyCandidateApiTest extends TestCase
         $response = $this->postJson("/api/auto-apply/candidates/{$candidate->id}/submit");
 
         $response->assertStatus(401);
+    }
+
+    public function test_cap_status_requires_a_valid_ingest_token(): void
+    {
+        $response = $this->getJson('/api/auto-apply/candidates/cap-status');
+
+        $response->assertStatus(401);
+    }
+
+    public function test_cap_status_reports_remaining_capacity(): void
+    {
+        config(['services.auto_apply.daily_cap' => 3]);
+        AutoApplyCandidate::factory()->create(['status' => AutoApplyCandidateStatus::Submitted]);
+
+        $response = $this->getJson('/api/auto-apply/candidates/cap-status', $this->tokenHeader());
+
+        $response->assertOk();
+        $response->assertExactJson(['cap' => 3, 'submitted_today' => 1, 'remaining' => 2]);
+    }
+
+    public function test_cap_status_never_reports_negative_remaining(): void
+    {
+        config(['services.auto_apply.daily_cap' => 1]);
+        AutoApplyCandidate::factory()->count(2)->create(['status' => AutoApplyCandidateStatus::Submitted]);
+
+        $response = $this->getJson('/api/auto-apply/candidates/cap-status', $this->tokenHeader());
+
+        $response->assertOk();
+        $response->assertJsonPath('remaining', 0);
     }
 
     public function test_lists_only_candidates_matching_the_status_filter(): void
@@ -168,5 +198,56 @@ class AutoApplyCandidateApiTest extends TestCase
 
         $response->assertStatus(422);
         $this->assertDatabaseCount('job_applications', 1);
+    }
+
+    public function test_submit_refuses_once_the_daily_cap_is_reached(): void
+    {
+        config(['services.auto_apply.daily_cap' => 1]);
+
+        $first = AutoApplyCandidate::factory()->create(['status' => AutoApplyCandidateStatus::ReadyForReview]);
+        $this->postJson("/api/auto-apply/candidates/{$first->id}/submit", [], $this->tokenHeader())
+            ->assertCreated();
+
+        $second = AutoApplyCandidate::factory()->create(['status' => AutoApplyCandidateStatus::ReadyForReview]);
+        $response = $this->postJson("/api/auto-apply/candidates/{$second->id}/submit", [], $this->tokenHeader());
+
+        $response->assertStatus(429);
+        $response->assertJsonPath('message', 'Daily auto-apply cap reached (1/1 submitted today). Try again tomorrow.');
+        $this->assertDatabaseCount('job_applications', 1);
+        $this->assertDatabaseHas('auto_apply_candidates', [
+            'id' => $second->id,
+            'status' => 'ready_for_review',
+        ]);
+    }
+
+    public function test_submit_succeeds_while_under_the_daily_cap(): void
+    {
+        config(['services.auto_apply.daily_cap' => 3]);
+
+        foreach (range(1, 3) as $i) {
+            $candidate = AutoApplyCandidate::factory()->create(['status' => AutoApplyCandidateStatus::ReadyForReview]);
+            $this->postJson("/api/auto-apply/candidates/{$candidate->id}/submit", [], $this->tokenHeader())
+                ->assertCreated();
+        }
+
+        $this->assertDatabaseCount('job_applications', 3);
+    }
+
+    public function test_the_daily_cap_only_counts_todays_submissions(): void
+    {
+        config(['services.auto_apply.daily_cap' => 1]);
+
+        // A candidate submitted yesterday shouldn't count against today's
+        // cap — backdate updated_at directly (Eloquent would otherwise
+        // stamp it "now" on every save).
+        $yesterday = AutoApplyCandidate::factory()->create(['status' => AutoApplyCandidateStatus::Submitted]);
+        DB::table('auto_apply_candidates')
+            ->where('id', $yesterday->id)
+            ->update(['updated_at' => now()->subDay()]);
+
+        $today = AutoApplyCandidate::factory()->create(['status' => AutoApplyCandidateStatus::ReadyForReview]);
+        $response = $this->postJson("/api/auto-apply/candidates/{$today->id}/submit", [], $this->tokenHeader());
+
+        $response->assertCreated();
     }
 }

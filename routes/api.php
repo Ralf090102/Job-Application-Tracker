@@ -49,6 +49,9 @@ Route::middleware('auto-apply.token')->post('/auto-apply/ingest', [AutoApplyInge
 // backend, not the browser SPA or a second machine-to-machine caller, so
 // there's no reason to mint a second secret for it.
 Route::middleware('auto-apply.token')->prefix('auto-apply')->group(function () {
+    // v2 Phase 6: checked by the skill before ever driving a real Indeed
+    // submission, not just discovered via a 429 after the fact.
+    Route::get('/candidates/cap-status', [AutoApplyCandidateController::class, 'capStatus']);
     Route::get('/candidates', [AutoApplyCandidateController::class, 'index']);
     Route::post('/candidates/{candidate}/reject', [AutoApplyCandidateController::class, 'reject']);
     Route::post('/candidates/{candidate}/submit', [AutoApplyCandidateController::class, 'submit']);

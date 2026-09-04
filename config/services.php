@@ -61,6 +61,13 @@ return [
     // App\Http\Middleware\VerifyAutoApplyIngestToken).
     'auto_apply' => [
         'ingest_token' => env('AUTO_APPLY_INGEST_TOKEN'),
+
+        // v2 Phase 6 — the hard ceiling on real Easy Apply submissions per
+        // day, enforced in AutoApplyCandidateController::submit() itself
+        // (not just documented as a convention — a candidate beyond the
+        // cap gets a 429, full stop). "Today" is Laravel's app.timezone
+        // (Asia/Manila by default, matching n8n's own schedule), not UTC.
+        'daily_cap' => env('AUTO_APPLY_DAILY_CAP', 3),
     ],
 
     // v2 Phase 3 — where ResumeTailoringService reads resume/portfolio
