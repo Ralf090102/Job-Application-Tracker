@@ -6,8 +6,10 @@ use App\Contracts\JobPostingMatcher;
 use App\Enums\AutoApplyCandidateStatus;
 use App\Enums\WorkMode;
 use App\Exceptions\JobPostingMatchException;
+use App\Jobs\TailorResumeCandidate;
 use App\Models\AutoApplyCandidate;
 use App\Models\JobSearchCriteria;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -23,10 +25,7 @@ use Illuminate\Support\Facades\Log;
  */
 class AutoApplyIngestService
 {
-    public function __construct(
-        private JobPostingMatcher $matcher,
-        private ResumeTailoringService $tailoringService,
-    ) {}
+    public function __construct(private JobPostingMatcher $matcher) {}
 
     /**
      * @param  array<int, array<string, mixed>>  $rawPostings  raw JSearch posting objects
@@ -44,6 +43,12 @@ class AutoApplyIngestService
             'candidates' => [],
         ];
 
+        // Normalize every posting up front so duplicate-checking can be one
+        // batched query instead of one exists() query per posting inside
+        // the loop (found via /bug-sweep 2026-09-04 — directly relevant to
+        // how many postings fit before the request itself times out).
+        $normalized = [];
+
         foreach ($rawPostings as $raw) {
             $posting = $this->normalize($raw);
 
@@ -53,7 +58,17 @@ class AutoApplyIngestService
                 continue;
             }
 
-            if (AutoApplyCandidate::where('posting_url', $posting['posting_url'])->exists()) {
+            $normalized[] = $posting;
+        }
+
+        $existingUrls = $normalized === []
+            ? collect()
+            : AutoApplyCandidate::whereIn('posting_url', array_column($normalized, 'posting_url'))
+                ->pluck('posting_url')
+                ->flip();
+
+        foreach ($normalized as $posting) {
+            if ($existingUrls->has($posting['posting_url'])) {
                 $summary['skipped_duplicate']++;
 
                 continue;
@@ -88,25 +103,40 @@ class AutoApplyIngestService
                 $reasoning = $result['reasoning'];
             }
 
-            $candidate = AutoApplyCandidate::create([
-                ...$posting,
-                // The migration's column default is 'discovered' — a
-                // posting that made it here already passed both the
-                // deterministic and LLM matching passes, so it belongs at
-                // 'matched', not the default (JAT-Roadmap-AutoApply.md
-                // Phase 2: "matches move to matched").
-                'status' => AutoApplyCandidateStatus::Matched,
-                'match_reasoning' => $reasoning,
-            ]);
+            try {
+                $candidate = AutoApplyCandidate::create([
+                    ...$posting,
+                    // The migration's column default is 'discovered' — a
+                    // posting that made it here already passed both the
+                    // deterministic and LLM matching passes, so it belongs
+                    // at 'matched', not the default (JAT-Roadmap-AutoApply.md
+                    // Phase 2: "matches move to matched").
+                    'status' => AutoApplyCandidateStatus::Matched,
+                    'match_reasoning' => $reasoning,
+                ]);
+            } catch (QueryException $e) {
+                // TOCTOU: another concurrent ingest call (e.g. an n8n retry
+                // firing mid-batch) inserted this exact posting_url between
+                // the batched dedup check above and this create() — treat
+                // it as a duplicate instead of letting the unique-constraint
+                // violation 500 the rest of this batch (/bug-sweep
+                // 2026-09-04).
+                Log::warning('Auto-apply ingest: posting_url race on create()', ['posting_url' => $posting['posting_url']]);
+                $summary['skipped_duplicate']++;
 
-            // Phase 3: tailor + render immediately, same continuous chain
-            // as the Architecture section describes. Never throws — a
-            // tailoring/render failure just leaves the candidate at
-            // 'matched' rather than aborting this whole ingest batch.
-            $this->tailoringService->process($candidate);
+                continue;
+            }
+
+            // Phase 3: tailor + render, queued rather than run inline —
+            // a single candidate's tailoring can take up to ~600-750s, far
+            // past what an HTTP request/reverse proxy would tolerate for a
+            // multi-candidate batch (/bug-sweep 2026-09-04). Requires a
+            // queue worker running; QUEUE_CONNECTION=sync in tests runs
+            // this inline with no extra setup.
+            TailorResumeCandidate::dispatch($candidate);
 
             $summary['matched']++;
-            $summary['candidates'][] = $candidate->fresh();
+            $summary['candidates'][] = $candidate;
         }
 
         return $summary;
@@ -124,7 +154,16 @@ class AutoApplyIngestService
      */
     private function normalize(array $raw): ?array
     {
-        $postingUrl = $raw['job_apply_link'] ?? $raw['job_google_link'] ?? null;
+        // job_apply_link ?? job_google_link only falls through on null, not
+        // on an empty string — a posting with job_apply_link === "" (only
+        // indexed via Google's job board, say) used to get discarded
+        // outright instead of falling back (/bug-sweep 2026-09-04).
+        $postingUrl = $raw['job_apply_link'] ?? null;
+
+        if (! is_string($postingUrl) || $postingUrl === '') {
+            $postingUrl = $raw['job_google_link'] ?? null;
+        }
+
         $company = $raw['employer_name'] ?? null;
         $role = $raw['job_title'] ?? null;
 
@@ -170,7 +209,16 @@ class AutoApplyIngestService
             return false;
         }
 
-        if ($criteria->work_mode !== null && $posting['work_mode'] !== $criteria->work_mode->value) {
+        // JSearch's job_is_remote is a plain boolean (see normalize()), so
+        // a posting's work_mode can only ever be Remote or Onsite — never
+        // Hybrid. A criteria row set to Hybrid used to reject every single
+        // posting forever, silently, since posting.work_mode could never
+        // equal 'hybrid' (found via /bug-sweep 2026-09-04). Treated as "no
+        // constraint" instead, since it genuinely can't be checked from
+        // JSearch data.
+        if ($criteria->work_mode !== null
+            && $criteria->work_mode !== WorkMode::Hybrid
+            && $posting['work_mode'] !== $criteria->work_mode->value) {
             return false;
         }
 

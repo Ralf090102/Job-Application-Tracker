@@ -28,6 +28,18 @@ class JobSearchClient
         $host = config('services.jsearch.host');
         $key = config('services.jsearch.key');
 
+        if (! $host || ! $key) {
+            // Distinct from the generic "unreachable"/HTTP-error messages
+            // below — a blank JSEARCH_API_KEY (it ships empty in
+            // .env.example) would otherwise send a request with an empty
+            // x-rapidapi-key header and surface as a confusing wrapped
+            // RapidAPI 401/403 instead of a clear config error
+            // (found via /bug-sweep 2026-09-04).
+            throw new JobSearchException(
+                'JSEARCH_API_KEY / JSEARCH_API_HOST are not configured — check your .env.',
+            );
+        }
+
         $query = trim(implode(' ', array_filter([
             implode(' ', $criteria->position_keywords ?? []),
             $criteria->location ? "in {$criteria->location}" : null,

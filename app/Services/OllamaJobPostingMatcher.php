@@ -4,9 +4,7 @@ namespace App\Services;
 
 use App\Contracts\JobPostingMatcher;
 use App\Exceptions\JobPostingMatchException;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
-use Throwable;
+use App\Exceptions\OllamaException;
 
 /**
  * Calls the same local Ollama server as OllamaJobPostingExtractor (v1
@@ -27,11 +25,10 @@ class OllamaJobPostingMatcher implements JobPostingMatcher
         'required' => ['matches', 'reasoning'],
     ];
 
+    public function __construct(private OllamaClient $client) {}
+
     public function evaluate(string $postingText, string $avoidIfRubric): array
     {
-        $url = rtrim(config('services.ollama.url'), '/');
-        $model = config('services.ollama.model');
-
         $systemPrompt = <<<PROMPT
             You decide whether a job posting should be filtered out based on a
             free-text rubric of things to avoid. "matches" means the posting is
@@ -46,42 +43,10 @@ class OllamaJobPostingMatcher implements JobPostingMatcher
             Respond with JSON only, matching the given schema exactly.
             PROMPT;
 
-        // See OllamaJobPostingExtractor for why this is needed alongside
-        // Http::timeout() — PHP's own max_execution_time is a separate,
-        // lower ceiling.
-        set_time_limit(150);
-
         try {
-            $response = Http::timeout(120)->post("{$url}/api/chat", [
-                'model' => $model,
-                'stream' => false,
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $postingText],
-                ],
-                'format' => self::RESPONSE_SCHEMA,
-            ]);
-        } catch (Throwable $e) {
-            throw new JobPostingMatchException(
-                "Couldn't reach Ollama at {$url} — is it running? (`ollama serve`)",
-                previous: $e,
-            );
-        }
-
-        if ($response->failed()) {
-            throw new JobPostingMatchException(
-                "Ollama returned an error (HTTP {$response->status()}): ".$response->body(),
-            );
-        }
-
-        $raw = $response->json('message.content');
-        $decoded = is_string($raw) ? json_decode($raw, true) : null;
-
-        if (! is_array($decoded)) {
-            Log::warning('Job posting match: model did not return valid JSON', ['raw' => $raw]);
-            throw new JobPostingMatchException(
-                'The model returned something that was not valid JSON.',
-            );
+            $decoded = $this->client->chatJson($systemPrompt, $postingText, self::RESPONSE_SCHEMA, timeoutSeconds: 120);
+        } catch (OllamaException $e) {
+            throw new JobPostingMatchException($e->getMessage(), previous: $e);
         }
 
         return [

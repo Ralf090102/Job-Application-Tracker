@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Exceptions\JobSearchException;
 use App\Models\JobSearchCriteria;
 use App\Services\AutoApplyIngestService;
 use App\Services\JobSearchClient;
@@ -30,7 +31,17 @@ class AutoApplySearchCommand extends Command
         }
 
         $this->info('Searching JSearch...');
-        $postings = $client->search($criteria);
+
+        try {
+            $postings = $client->search($criteria);
+        } catch (JobSearchException $e) {
+            // Every other failure path in this phase logs cleanly instead
+            // of crashing (found missing here via /bug-sweep 2026-09-04).
+            $this->error("JSearch call failed: {$e->getMessage()}");
+
+            return self::FAILURE;
+        }
+
         $this->info(sprintf('JSearch returned %d posting(s).', count($postings)));
 
         $summary = $ingestService->ingest($postings);

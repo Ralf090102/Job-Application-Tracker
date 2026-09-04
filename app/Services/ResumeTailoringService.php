@@ -5,12 +5,11 @@ namespace App\Services;
 use App\Contracts\PdfRenderer;
 use App\Contracts\ResumeTailor;
 use App\Enums\AutoApplyCandidateStatus;
-use App\Exceptions\PdfRenderException;
-use App\Exceptions\ResumeTailoringException;
 use App\Models\AutoApplyCandidate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
+use Throwable;
 
 /**
  * Orchestrates Phase 3: pick a resume variant, tailor it against a
@@ -22,7 +21,11 @@ use RuntimeException;
  *
  * Deliberately never throws — a tailoring or render failure just leaves
  * the candidate at whatever status it reached (matched/tweaked), logged,
- * rather than aborting the ingest batch it's called from.
+ * rather than aborting the ingest batch it's called from. Both catch
+ * blocks below are deliberately broad (bare Throwable) to actually
+ * guarantee that: a narrower catch previously let a Storage/DB failure
+ * escape uncaught, contradicting this exact promise (found via
+ * /bug-sweep 2026-09-04).
  */
 class ResumeTailoringService
 {
@@ -99,36 +102,39 @@ class ResumeTailoringService
             );
 
             $tailored = trim($tailoredExperienceAndProjects)."\n\n".$skillsSection;
-        } catch (ResumeTailoringException|RuntimeException $e) {
+
+            $mdRelativePath = "auto-apply/{$candidate->id}/resume.md";
+            Storage::disk('local')->put($mdRelativePath, $tailored);
+
+            $candidate->update([
+                'resume_variant' => $selection['variant'],
+                'resume_variant_reason' => $selection['reason'],
+                'status' => AutoApplyCandidateStatus::Tweaked,
+            ]);
+        } catch (Throwable $e) {
+            // Bare Throwable, deliberately — see class docblock. Storage
+            // writes (Flysystem 3.x throws UnableToWriteFile, not a bool
+            // return) and ->update() (QueryException) previously sat
+            // outside this catch, so a failure here could still 500 the
+            // whole ingest batch despite the "never throws" promise.
             Log::warning('Resume tailoring failed', ['candidate_id' => $candidate->id, 'error' => $e->getMessage()]);
 
             return;
         }
-
-        $mdRelativePath = "auto-apply/{$candidate->id}/resume.md";
-        Storage::disk('local')->put($mdRelativePath, $tailored);
-
-        $candidate->update([
-            'resume_variant' => $selection['variant'],
-            'resume_variant_reason' => $selection['reason'],
-            'status' => AutoApplyCandidateStatus::Tweaked,
-        ]);
 
         $mdAbsolutePath = Storage::disk('local')->path($mdRelativePath);
         $pdfAbsolutePath = Storage::disk('local')->path("auto-apply/{$candidate->id}/resume.pdf");
 
         try {
             $this->renderer->render($mdAbsolutePath, $pdfAbsolutePath);
-        } catch (PdfRenderException $e) {
+
+            $candidate->update([
+                'tailored_resume_path' => $pdfAbsolutePath,
+                'status' => AutoApplyCandidateStatus::ReadyForReview,
+            ]);
+        } catch (Throwable $e) {
             Log::warning('Resume PDF render failed', ['candidate_id' => $candidate->id, 'error' => $e->getMessage()]);
-
-            return;
         }
-
-        $candidate->update([
-            'tailored_resume_path' => $pdfAbsolutePath,
-            'status' => AutoApplyCandidateStatus::ReadyForReview,
-        ]);
     }
 
     /**
@@ -176,8 +182,16 @@ class ResumeTailoringService
             return trim($matches[0]);
         }
 
-        // Fallback: the expected structure wasn't found — send the whole
-        // note rather than silently sending nothing to the LLM.
+        // Fallback: the expected heading structure wasn't found — send the
+        // whole note rather than silently sending nothing to the LLM. Logged
+        // (not silent) because this safety trim exists specifically to keep
+        // private Status/TODO notes out of the outbound LLM call and the
+        // prompt under the timeout threshold measured in process() — if a
+        // resume note's headings ever drift and this fallback engages, that
+        // protection has quietly stopped working (found via /bug-sweep
+        // 2026-09-04).
+        Log::warning('Resume tailoring: expected heading structure not found, sending untrimmed note to the LLM.');
+
         return $noteContent;
     }
 

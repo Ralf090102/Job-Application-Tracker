@@ -10,6 +10,7 @@ use App\Exceptions\ResumeTailoringException;
 use App\Models\AutoApplyCandidate;
 use App\Services\ResumeTailoringService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -168,5 +169,26 @@ class ResumeTailoringServiceTest extends TestCase
         $this->assertSame(AutoApplyCandidateStatus::Tweaked, $fresh->status);
         $this->assertSame('PE', $fresh->resume_variant);
         $this->assertNull($fresh->tailored_resume_path);
+    }
+
+    public function test_logs_a_warning_when_resume_heading_structure_is_not_found(): void
+    {
+        // Regression: this fallback used to be silent, so the safety trim
+        // (private Status/TODO notes stripped, prompt kept under the
+        // measured timeout threshold) could quietly stop working with no
+        // signal that it had (/bug-sweep 2026-09-04).
+        Log::shouldReceive('warning')
+            ->once()
+            ->with(\Mockery::pattern('/expected heading structure not found/'));
+
+        $service = app(ResumeTailoringService::class);
+        $method = new \ReflectionMethod($service, 'extractCoreResumeSections');
+        $method->setAccessible(true);
+
+        $malformed = "# Just a title\n\nNo matching headings here at all.";
+        $result = $method->invoke($service, $malformed);
+
+        // Still falls back to sending the whole note, just no longer silently.
+        $this->assertSame($malformed, $result);
     }
 }

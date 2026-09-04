@@ -3,10 +3,9 @@
 namespace App\Services;
 
 use App\Contracts\ResumeTailor;
+use App\Exceptions\OllamaException;
 use App\Exceptions\ResumeTailoringException;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Throwable;
 
 /**
  * Calls the same local Ollama server as the other v2 LLM services for
@@ -27,6 +26,8 @@ class OllamaResumeTailor implements ResumeTailor
         ],
         'required' => ['variant', 'reason'],
     ];
+
+    public function __construct(private OllamaClient $client) {}
 
     public function selectVariant(string $role, string $company, string $postingText, array $variantSummaries): array
     {
@@ -49,7 +50,11 @@ class OllamaResumeTailor implements ResumeTailor
 
         $userMessage = "Company: {$company}\nRole: {$role}\n\nPosting:\n{$postingText}";
 
-        $decoded = $this->callOllama($systemPrompt, $userMessage, self::SELECT_RESPONSE_SCHEMA, contextSize: 4096);
+        try {
+            $decoded = $this->client->chatJson($systemPrompt, $userMessage, self::SELECT_RESPONSE_SCHEMA, contextSize: 4096, timeoutSeconds: 120);
+        } catch (OllamaException $e) {
+            throw new ResumeTailoringException($e->getMessage(), previous: $e);
+        }
 
         $variant = is_string($decoded['variant'] ?? null) ? $decoded['variant'] : null;
 
@@ -136,97 +141,13 @@ class OllamaResumeTailor implements ResumeTailor
         // on CPU-bound local inference measured well past 180s in testing —
         // generous timeouts on both fronts, mirroring the same "found a
         // real wall live, raised both ceilings" pattern as v1's Ollama
-        // extractor (see OllamaJobPostingExtractor).
-        set_time_limit(650);
-
+        // extractor (see OllamaJobPostingExtractor). No JSON schema here —
+        // the output is free-form Markdown.
         try {
-            $response = Http::timeout(600)->post($this->ollamaUrl().'/api/chat', [
-                'model' => config('services.ollama.model'),
-                'stream' => false,
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => 'Produce the tailored resume now.'],
-                ],
-                // No `format` here — the output is free-form Markdown, not
-                // JSON. A generous context window instead: SOURCE 1 + SOURCE 2
-                // + the posting easily exceeds Ollama's small default context,
-                // which would silently truncate the prompt.
-                'options' => ['num_ctx' => 16384],
-            ]);
-        } catch (Throwable $e) {
-            throw new ResumeTailoringException(
-                "Couldn't reach Ollama at {$this->ollamaUrl()} — is it running? (`ollama serve`)",
-                previous: $e,
-            );
+            return $this->client->chatText($systemPrompt, 'Produce the tailored resume now.', contextSize: 16384, timeoutSeconds: 600);
+        } catch (OllamaException $e) {
+            throw new ResumeTailoringException($e->getMessage(), previous: $e);
         }
-
-        return $this->extractContent($response, 'tailor resume');
-    }
-
-    /**
-     * @param  array<string, mixed>  $schema
-     * @return array<string, mixed>
-     */
-    private function callOllama(string $systemPrompt, string $userMessage, array $schema, int $contextSize): array
-    {
-        set_time_limit(150);
-
-        try {
-            $response = Http::timeout(120)->post($this->ollamaUrl().'/api/chat', [
-                'model' => config('services.ollama.model'),
-                'stream' => false,
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $userMessage],
-                ],
-                'format' => $schema,
-                'options' => ['num_ctx' => $contextSize],
-            ]);
-        } catch (Throwable $e) {
-            throw new ResumeTailoringException(
-                "Couldn't reach Ollama at {$this->ollamaUrl()} — is it running? (`ollama serve`)",
-                previous: $e,
-            );
-        }
-
-        if ($response->failed()) {
-            throw new ResumeTailoringException(
-                "Ollama returned an error (HTTP {$response->status()}): ".$response->body(),
-            );
-        }
-
-        $raw = $response->json('message.content');
-        $decoded = is_string($raw) ? json_decode($raw, true) : null;
-
-        if (! is_array($decoded)) {
-            Log::warning('Resume tailoring: model did not return valid JSON', ['raw' => $raw]);
-            throw new ResumeTailoringException('The model returned something that was not valid JSON.');
-        }
-
-        return $decoded;
-    }
-
-    private function extractContent(\Illuminate\Http\Client\Response $response, string $action): string
-    {
-        if ($response->failed()) {
-            throw new ResumeTailoringException(
-                "Ollama returned an error while trying to {$action} (HTTP {$response->status()}): ".$response->body(),
-            );
-        }
-
-        $content = $response->json('message.content');
-
-        if (! is_string($content) || trim($content) === '') {
-            Log::warning("Resume tailoring: model returned empty content for {$action}");
-            throw new ResumeTailoringException("The model returned an empty response while trying to {$action}.");
-        }
-
-        return trim($content);
-    }
-
-    private function ollamaUrl(): string
-    {
-        return rtrim(config('services.ollama.url'), '/');
     }
 
     /**

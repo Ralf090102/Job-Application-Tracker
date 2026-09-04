@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Contracts\JobPostingMatcher;
 use App\Enums\WorkMode;
+use App\Jobs\TailorResumeCandidate;
 use App\Models\AutoApplyCandidate;
 use App\Models\JobSearchCriteria;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class AutoApplyIngestTest extends TestCase
@@ -18,6 +20,13 @@ class AutoApplyIngestTest extends TestCase
         parent::setUp();
 
         config(['services.auto_apply.ingest_token' => 'test-token']);
+
+        // These tests are about ingest/matching logic, not tailoring — fake
+        // the queue so TailorResumeCandidate is recorded, not actually run
+        // synchronously (QUEUE_CONNECTION=sync in tests). Without this,
+        // every ingest test pays real job-dispatch overhead for a step none
+        // of them assert on, which measurably slowed the whole suite down.
+        Queue::fake();
     }
 
     private function postIngest(array $postings): \Illuminate\Testing\TestResponse
@@ -185,5 +194,57 @@ class AutoApplyIngestTest extends TestCase
             ->assertJsonPath('matched', 0)
             ->assertJsonPath('skipped_non_match', 1);
         $this->assertDatabaseCount('auto_apply_candidates', 0);
+    }
+
+    public function test_falls_back_to_job_google_link_when_job_apply_link_is_an_empty_string(): void
+    {
+        // Regression: the ?? fallback only triggered on null, not on an
+        // empty string, silently discarding postings that had a usable
+        // fallback URL (/bug-sweep 2026-09-04).
+        $response = $this->postIngest([$this->rawPosting([
+            'job_apply_link' => '',
+            'job_google_link' => 'https://jobs.google.com/some-posting',
+        ])]);
+
+        $response->assertOk()->assertJsonPath('matched', 1);
+        $this->assertDatabaseHas('auto_apply_candidates', [
+            'posting_url' => 'https://jobs.google.com/some-posting',
+        ]);
+    }
+
+    public function test_hybrid_criteria_work_mode_does_not_reject_every_posting(): void
+    {
+        // Regression: JSearch's job_is_remote can only ever resolve a
+        // posting's work_mode to Remote or Onsite, so a criteria row set to
+        // Hybrid used to reject every posting, forever, silently
+        // (/bug-sweep 2026-09-04). salary/hours left null so the factory's
+        // random bounds can't incidentally reject this posting for an
+        // unrelated reason.
+        JobSearchCriteria::factory()->create([
+            'work_mode' => WorkMode::Hybrid,
+            'salary_min' => null,
+            'salary_max' => null,
+            'hours_min' => null,
+            'hours_max' => null,
+        ]);
+
+        $response = $this->postIngest([$this->rawPosting(['job_is_remote' => false])]);
+
+        $response->assertOk()->assertJsonPath('matched', 1);
+    }
+
+    public function test_dispatches_a_tailoring_job_for_each_matched_candidate(): void
+    {
+        // Regression: tailoring used to run synchronously inline, which
+        // could block the request for 20-40+ minutes on a real batch
+        // (/bug-sweep 2026-09-04) — it must now be queued instead.
+        // (Queue::fake() already active — see setUp().)
+        $response = $this->postIngest([$this->rawPosting()]);
+
+        $response->assertOk()->assertJsonPath('matched', 1);
+
+        Queue::assertPushed(TailorResumeCandidate::class, function ($job) {
+            return $job->candidate->posting_url === 'https://indeed.com/viewjob?jk=abc123';
+        });
     }
 }

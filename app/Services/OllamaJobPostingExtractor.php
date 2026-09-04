@@ -4,9 +4,7 @@ namespace App\Services;
 
 use App\Contracts\JobPostingExtractor;
 use App\Exceptions\JobPostingExtractionException;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
-use Throwable;
+use App\Exceptions\OllamaException;
 
 /**
  * Calls a local Ollama server (no API key, no per-request cost — see
@@ -66,51 +64,16 @@ PROMPT;
         'required' => ['company', 'role', 'salary_min', 'salary_max', 'location', 'work_mode', 'red_flags'],
     ];
 
+    public function __construct(private OllamaClient $client) {}
+
     public function extract(string $postingText): array
     {
-        $url = rtrim(config('services.ollama.url'), '/');
-        $model = config('services.ollama.model');
-
-        // PHP's own max_execution_time (default 30s) is a SEPARATE, lower
-        // ceiling than the Http::timeout() below — it kills the whole
-        // process regardless of what Guzzle's timeout is set to. Found by
-        // an actual live test timing out at exactly 30s despite a 120s
-        // client timeout; this call is what fixes it, not that one alone.
-        set_time_limit(150);
-
         try {
             // Local CPU inference on a 7B model ran 20-50s in testing —
-            // generous timeout, well past Laravel's 30s default.
-            $response = Http::timeout(120)->post("{$url}/api/chat", [
-                'model' => $model,
-                'stream' => false,
-                'messages' => [
-                    ['role' => 'system', 'content' => self::SYSTEM_PROMPT],
-                    ['role' => 'user', 'content' => $postingText],
-                ],
-                'format' => self::RESPONSE_SCHEMA,
-            ]);
-        } catch (Throwable $e) {
-            throw new JobPostingExtractionException(
-                "Couldn't reach Ollama at {$url} — is it running? (`ollama serve`)",
-                previous: $e,
-            );
-        }
-
-        if ($response->failed()) {
-            throw new JobPostingExtractionException(
-                "Ollama returned an error (HTTP {$response->status()}): ".$response->body(),
-            );
-        }
-
-        $raw = $response->json('message.content');
-        $decoded = is_string($raw) ? json_decode($raw, true) : null;
-
-        if (! is_array($decoded)) {
-            Log::warning('Job posting extraction: model did not return valid JSON', ['raw' => $raw]);
-            throw new JobPostingExtractionException(
-                'The model returned something that was not valid JSON. Try again, or fill the form in by hand.',
-            );
+            // generous timeout (120s), well past Laravel's 30s default.
+            $decoded = $this->client->chatJson(self::SYSTEM_PROMPT, $postingText, self::RESPONSE_SCHEMA, timeoutSeconds: 120);
+        } catch (OllamaException $e) {
+            throw new JobPostingExtractionException($e->getMessage(), previous: $e);
         }
 
         return [
