@@ -47,6 +47,12 @@ return [
     'jsearch' => [
         'key' => env('JSEARCH_API_KEY'),
         'host' => env('JSEARCH_API_HOST', 'jsearch.p.rapidapi.com'),
+        // JSearch's /search-v2 requires a country code. Confirmed live:
+        // 'ph' is fully supported and returns real Metro Manila postings
+        // (Manulife, P&G, JobStreet PH, etc.) — not a JSearch gap, the
+        // earlier live test just hadn't set this yet. Defaults to 'ph'
+        // since this project targets Philippines-based roles.
+        'country' => env('JSEARCH_COUNTRY', 'ph'),
     ],
 
     // v2 Phase 2 — shared-secret header guarding the machine-to-machine

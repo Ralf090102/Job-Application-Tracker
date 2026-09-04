@@ -40,14 +40,20 @@ class JobSearchClient
         }
 
         try {
+            // /search-v2, not /search — confirmed live against this
+            // project's actual RapidAPI subscription (/search 404s with
+            // "Endpoint '/search' does not exist" on this key/plan).
+            // country/date_posted are required params on this endpoint.
             $response = Http::timeout(30)
                 ->withHeaders([
                     'x-rapidapi-host' => $host,
                     'x-rapidapi-key' => $key,
                 ])
-                ->get("https://{$host}/search", [
+                ->get("https://{$host}/search-v2", [
                     'query' => $query,
                     'num_pages' => 1,
+                    'country' => config('services.jsearch.country'),
+                    'date_posted' => 'all',
                 ]);
         } catch (Throwable $e) {
             throw new JobSearchException("Couldn't reach JSearch at {$host}.", previous: $e);
@@ -59,8 +65,9 @@ class JobSearchClient
             );
         }
 
-        $data = $response->json('data');
+        // Confirmed live: postings live under data.jobs, not data directly.
+        $jobs = $response->json('data.jobs');
 
-        return is_array($data) ? $data : [];
+        return is_array($jobs) ? $jobs : [];
     }
 }
