@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AutoApplyCandidateController;
 use App\Http\Controllers\AutoApplyIngestController;
 use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\JobPostingExtractionController;
@@ -40,3 +41,15 @@ Route::middleware('auth:sanctum')->group(function () {
 // results here (Architecture, JAT-Roadmap-AutoApply.md). Guarded by a
 // shared-secret header, not Sanctum — this isn't the browser SPA.
 Route::middleware('auto-apply.token')->post('/auto-apply/ingest', [AutoApplyIngestController::class, 'store']);
+
+// v2 Phase 5: the jat-review-queue Claude Code skill's API surface
+// (.claude/skills/jat-review-queue/SKILL.md) — list candidates waiting on
+// human review, reject one, submit one. Same shared-secret guard as ingest
+// above, deliberately: this is a local Claude Code session calling its own
+// backend, not the browser SPA or a second machine-to-machine caller, so
+// there's no reason to mint a second secret for it.
+Route::middleware('auto-apply.token')->prefix('auto-apply')->group(function () {
+    Route::get('/candidates', [AutoApplyCandidateController::class, 'index']);
+    Route::post('/candidates/{candidate}/reject', [AutoApplyCandidateController::class, 'reject']);
+    Route::post('/candidates/{candidate}/submit', [AutoApplyCandidateController::class, 'submit']);
+});
