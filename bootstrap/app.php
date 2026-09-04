@@ -30,6 +30,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // in the browser, but a pure JSON API shouldn't depend on every
         // caller setting that header correctly to fail gracefully.
         $middleware->redirectGuestsTo(fn () => null);
+
+        // v2 Phase 2: shared-secret guard for the machine-to-machine
+        // auto-apply ingest endpoint (see
+        // App\Http\Middleware\VerifyAutoApplyIngestToken).
+        $middleware->alias([
+            'auto-apply.token' => \App\Http\Middleware\VerifyAutoApplyIngestToken::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

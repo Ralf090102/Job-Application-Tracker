@@ -42,4 +42,19 @@ return [
         'model' => env('OLLAMA_MODEL', 'mistral:latest'),
     ],
 
+    // v2 Phase 2 — JSearch (RapidAPI) job search (App\Services\JobSearchClient).
+    // The first real API key this project stores.
+    'jsearch' => [
+        'key' => env('JSEARCH_API_KEY'),
+        'host' => env('JSEARCH_API_HOST', 'jsearch.p.rapidapi.com'),
+    ],
+
+    // v2 Phase 2 — shared-secret header guarding the machine-to-machine
+    // POST /api/auto-apply/ingest endpoint (n8n calls this, not the SPA, so
+    // Sanctum's cookie auth doesn't apply — see
+    // App\Http\Middleware\VerifyAutoApplyIngestToken).
+    'auto_apply' => [
+        'ingest_token' => env('AUTO_APPLY_INGEST_TOKEN'),
+    ],
+
 ];

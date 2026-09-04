@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AutoApplyIngestController;
 use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\JobPostingExtractionController;
 use Illuminate\Http\Request;
@@ -34,3 +35,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Phase 3: index/store/show/update/destroy, all under /api/job-applications.
     Route::apiResource('job-applications', JobApplicationController::class);
 });
+
+// v2 Phase 2: machine-to-machine — n8n calls JSearch itself then POSTs raw
+// results here (Architecture, JAT-Roadmap-AutoApply.md). Guarded by a
+// shared-secret header, not Sanctum — this isn't the browser SPA.
+Route::middleware('auto-apply.token')->post('/auto-apply/ingest', [AutoApplyIngestController::class, 'store']);

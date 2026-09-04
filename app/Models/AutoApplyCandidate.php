@@ -22,6 +22,7 @@ class AutoApplyCandidate extends Model
         'location',
         'work_mode',
         'status',
+        'posting_text',
         'match_reasoning',
         'tailored_resume_path',
         'resume_variant',

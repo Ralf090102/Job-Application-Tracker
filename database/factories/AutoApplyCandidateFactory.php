@@ -35,6 +35,7 @@ class AutoApplyCandidateFactory extends Factory
             'location' => $this->faker->city(),
             'work_mode' => $this->faker->randomElement(WorkMode::cases()),
             'status' => $this->faker->randomElement(AutoApplyCandidateStatus::cases()),
+            'posting_text' => $this->faker->optional()->paragraphs(3, true),
             'match_reasoning' => $this->faker->optional()->paragraph(),
             'tailored_resume_path' => $this->faker->optional()->filePath(),
             'resume_variant' => $this->faker->optional()->word(),
