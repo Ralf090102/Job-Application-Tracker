@@ -1,0 +1,82 @@
+{
+  "name": "JAT Auto-Apply Ingest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [0, 0],
+      "id": "269fb88f-f0a3-4285-b967-cd0db105f60f",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://jsearch.p.rapidapi.com/search-v2",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "query", "value": "software engineer in Philippines" },
+            { "name": "num_pages", "value": "1" },
+            { "name": "country", "value": "ph" },
+            { "name": "date_posted", "value": "week" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-rapidapi-host", "value": "jsearch.p.rapidapi.com" },
+            { "name": "x-rapidapi-key", "value": "YOUR_JSEARCH_API_KEY" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [224, 0],
+      "id": "50a9372a-4b19-4060-a5e5-7e767bde7a2e",
+      "name": "Search JSearch"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/api/auto-apply/ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Ingest-Token", "value": "YOUR_AUTO_APPLY_INGEST_TOKEN" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "postings", "value": "={{ $json.data.jobs }}" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [448, 0],
+      "id": "03bf8bcf-10dc-4052-af3e-0235a366cdbe",
+      "name": "POST to Laravel Ingest"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{ "node": "Search JSearch", "type": "main", "index": 0 }]]
+    },
+    "Search JSearch": {
+      "main": [[{ "node": "POST to Laravel Ingest", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
