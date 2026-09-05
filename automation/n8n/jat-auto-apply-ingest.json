@@ -5,7 +5,10 @@
       "parameters": {
         "rule": {
           "interval": [
-            {}
+            {
+              "field": "days",
+              "daysInterval": 1
+            }
           ]
         }
       },

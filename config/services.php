@@ -65,8 +65,10 @@ return [
         // v2 Phase 6 — the hard ceiling on real Easy Apply submissions per
         // day, enforced in AutoApplyCandidateController::submit() itself
         // (not just documented as a convention — a candidate beyond the
-        // cap gets a 429, full stop). "Today" is Laravel's app.timezone
-        // (Asia/Manila by default, matching n8n's own schedule), not UTC.
+        // cap gets a 429, full stop). "Today" means midnight Asia/Manila
+        // (matching n8n's own schedule), computed locally in
+        // AutoApplyCandidateController::submittedToday() — not via
+        // app.timezone, which stays UTC (see config/app.php).
         'daily_cap' => env('AUTO_APPLY_DAILY_CAP', 3),
     ],
 

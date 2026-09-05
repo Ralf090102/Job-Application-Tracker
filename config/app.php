@@ -63,15 +63,18 @@ return [
     | will be used by the PHP date and date-time functions. The timezone
     | is set to "UTC" by default as it is suitable for most use cases.
     |
-    | v2 Phase 6: overridden to Asia/Manila by default — the auto-apply
-    | daily cap (AUTO_APPLY_DAILY_CAP) resets at "today" as Laravel sees
-    | it, and n8n's own Schedule Trigger already runs on Asia/Manila. A
-    | UTC "today" would reset the cap at 8am Manila time instead of
-    | midnight, an 8-hour drift from the user's actual day.
+    | v2 Phase 6 note: the auto-apply daily cap needs "today" to mean
+    | midnight Asia/Manila, not UTC — but that's computed locally in
+    | AutoApplyCandidateController::submittedToday() rather than here.
+    | Overriding the app-wide timezone would relabel every stored
+    | timestamp in the app (every existing JobApplication row's
+    | created_at/updated_at was written under UTC) the moment it's read
+    | back and re-serialized under a different zone — an app-wide side
+    | effect for one feature's narrow "today" boundary.
     |
     */
 
-    'timezone' => env('APP_TIMEZONE', 'Asia/Manila'),
+    'timezone' => 'UTC',
 
     /*
     |--------------------------------------------------------------------------
