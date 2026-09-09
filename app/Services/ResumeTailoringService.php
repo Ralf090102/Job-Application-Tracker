@@ -206,7 +206,18 @@ class ResumeTailoringService
     {
         $kept = [];
 
-        if (preg_match('/##\s*7\.\s*Contact.*?(?=\n##\s|\z)/is', $portfolioContent, $matches)) {
+        // Match by heading text, not a hardcoded section number — the
+        // portfolio's Contact section drifted from "## 7." to "## 8."
+        // when a Mobile section was inserted ahead of it, and the old
+        // number-pinned regex silently stopped matching. Silent because
+        // project-section matches below keep $kept non-empty, so the
+        // "send the whole portfolio" fallback never engaged — the LLM
+        // was simply never given a Contact section and fabricated a
+        // fake name/email/phone every time instead (found live during
+        // the 2026-09-09 smoke test: two different re-tailored resumes
+        // came back under two different fake identities, "Ralf Bernardo"
+        // and "Ralf Villar", neither the real name).
+        if (preg_match('/##\s*\d+\.\s*Contact.*?(?=\n##\s|\z)/is', $portfolioContent, $matches)) {
             $kept[] = trim($matches[0]);
         }
 
