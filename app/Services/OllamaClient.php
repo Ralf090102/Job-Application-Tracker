@@ -103,6 +103,19 @@ class OllamaClient
                 "Couldn't reach Ollama at {$url} — is it running? (`ollama serve`)",
                 previous: $e,
             );
+        } finally {
+            // Real fix for the 2026-09-09 smoke-test bug: set_time_limit()
+            // only *resets* PHP's countdown at the moment it's called — it
+            // doesn't cap just this call. `php artisan queue:work` keeps the
+            // same PHP process alive across jobs, so the countdown armed
+            // above kept ticking during idle time *between* jobs too, and
+            // the worker fatally died with "Maximum execution time of 650
+            // seconds exceeded" the next time it happened to still be idling
+            // when that countdown hit zero — even though the job that armed
+            // it had already finished cleanly. Disarming it here, right
+            // after this call ends (success or failure), means the ceiling
+            // only ever covers the call it was meant for.
+            set_time_limit(0);
         }
 
         if ($response->failed()) {
