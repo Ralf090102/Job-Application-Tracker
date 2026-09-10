@@ -287,7 +287,51 @@ class ResumeTailoringService
 
         $output = preg_replace('/\n##\s*Skills\b.*\z/is', '', $output);
 
-        return trim($output);
+        return $this->dedupeExperienceAgainstProjects(trim($output));
+    }
+
+    /**
+     * Drops any Experience entry whose heading also appears under Projects,
+     * keeping the Projects copy only. The prompt explicitly says an entry
+     * belongs in only one of the two sections and that a self-directed
+     * project is never paid work, but a real live run (2026-09-10 smoke
+     * test, candidate #33) showed the model still duplicated "Job
+     * Application Tracker" into both — plausibly padding a thin Experience
+     * section once posting-relevance filtering left it short. Experience is
+     * the side that gets dropped on a match: it's the stronger claim (paid
+     * work vs. a personal project), so it's the one worth being wrong about
+     * removing rather than keeping.
+     */
+    private function dedupeExperienceAgainstProjects(string $output): string
+    {
+        if (! preg_match('/\n(##\s*Projects\b.*)\z/is', $output, $split, PREG_OFFSET_CAPTURE)) {
+            return $output;
+        }
+
+        $experiencePart = substr($output, 0, $split[1][1]);
+        $projectsPart = $split[1][0];
+
+        preg_match_all('/^####\s+(.+)$/m', $projectsPart, $projectHeadings);
+        $projectNames = array_map($this->headingCoreName(...), $projectHeadings[1]);
+
+        $experiencePart = preg_replace_callback(
+            '/\n####[ \t]+([^\n]+)\n(?:(?!\n#{2,4}[ \t])[\s\S])*/i',
+            fn ($block) => in_array($this->headingCoreName($block[1]), $projectNames, true) ? '' : $block[0],
+            $experiencePart,
+        );
+
+        return rtrim($experiencePart)."\n\n".trim($projectsPart);
+    }
+
+    /**
+     * A heading's name with any trailing date/annotation dropped — e.g.
+     * "Job Application Tracker (Aug 2026)" and "Job Application Tracker"
+     * both reduce to "job application tracker" — so a duplicate is caught
+     * even when the model appends slightly different framing per section.
+     */
+    private function headingCoreName(string $heading): string
+    {
+        return strtolower(trim(preg_split('/\s*[—(]/u', trim($heading))[0]));
     }
 
     /**

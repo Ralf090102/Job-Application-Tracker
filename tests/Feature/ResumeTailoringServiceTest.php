@@ -293,4 +293,48 @@ class ResumeTailoringServiceTest extends TestCase
 
         $this->assertSame($wellFormed, $method->invoke($service, $wellFormed));
     }
+
+    public function test_drops_an_entry_duplicated_into_experience_from_projects(): void
+    {
+        // Regression for the 2026-09-10 smoke-test finding: a real
+        // re-tailoring run (candidate #33) duplicated "Job Application
+        // Tracker" into both Experience and Projects, despite the prompt
+        // explicitly saying an entry belongs in only one section. Experience
+        // is the side that must lose the duplicate — it's the stronger
+        // claim (paid work vs. a personal project).
+        $llmOutput = <<<'MD'
+            # Test Candidate
+            test@example.com
+
+            ## Experience
+
+            #### Real Job — Backend Intern (2025)
+            - Built a backend feature.
+
+            #### Job Application Tracker (Aug 2026)
+            - Built a full-stack job-application tracker.
+
+            ## Projects
+
+            #### WiQAS *(Outstanding Thesis Award)*
+            - Designed and built a RAG-based QA system.
+
+            #### Job Application Tracker
+            - Built a full-stack job-application tracker.
+            MD;
+
+        $service = app(ResumeTailoringService::class);
+        $method = new \ReflectionMethod($service, 'sanitizeTailoredOutput');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($service, $llmOutput);
+
+        $this->assertSame(1, substr_count($result, 'Job Application Tracker'));
+        $this->assertStringContainsString('Real Job', $result);
+        $this->assertStringContainsString('WiQAS', $result);
+        // The surviving copy must be the Projects one, not Experience's.
+        $projectsPos = strpos($result, '## Projects');
+        $jatPos = strpos($result, 'Job Application Tracker');
+        $this->assertGreaterThan($projectsPos, $jatPos);
+    }
 }
