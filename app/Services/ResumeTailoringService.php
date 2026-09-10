@@ -93,13 +93,13 @@ class ResumeTailoringService
             // afterward verbatim, straight from the source, no generation.
             [$experienceAndProjects, $skillsSection] = $this->splitOffSkills($resumeSections);
 
-            $tailoredExperienceAndProjects = $this->tailor->tailor(
+            $tailoredExperienceAndProjects = $this->sanitizeTailoredOutput($this->tailor->tailor(
                 $candidate->role,
                 $candidate->company,
                 $candidate->posting_text ?? '',
                 $experienceAndProjects,
                 $portfolioMarkdown,
-            );
+            ));
 
             $tailored = trim($tailoredExperienceAndProjects)."\n\n".$skillsSection;
 
@@ -174,12 +174,13 @@ class ResumeTailoringService
      * questions/TODO, Related). Cut/kept annotations for individual
      * bullets (e.g. "cut from the final 1-page PDF") live inline within
      * this block itself, so they're preserved — only the surrounding
-     * planning-note scaffolding is removed.
+     * planning-note scaffolding is removed. Reference-only sub-entries are
+     * then stripped separately — see stripReferenceOnlyBlocks().
      */
     private function extractCoreResumeSections(string $noteContent): string
     {
         if (preg_match('/###\s*Experience.*?(?=\n##\s*(?:Open questions|Related)|\z)/is', $noteContent, $matches)) {
-            return trim($matches[0]);
+            return $this->stripReferenceOnlyBlocks(trim($matches[0]));
         }
 
         // Fallback: the expected heading structure wasn't found — send the
@@ -192,7 +193,30 @@ class ResumeTailoringService
         // 2026-09-04).
         Log::warning('Resume tailoring: expected heading structure not found, sending untrimmed note to the LLM.');
 
-        return $noteContent;
+        return $this->stripReferenceOnlyBlocks($noteContent);
+    }
+
+    /**
+     * Drops any heading-level sub-entry whose own heading line is marked as
+     * reference-only (e.g. "(reference — merged above)", "kept here for
+     * reference/future re-tailoring") — background material for interview
+     * prep that the source note's own annotations say was never part of
+     * what actually shipped. The tailoring prompt already tells the model
+     * to ignore these ("Never use anything explicitly marked cut, dropped,
+     * deferred, or superseded" / "kept here for reference only"), but a
+     * real live run (2026-09-10 smoke test, candidate #33) showed the local
+     * model doesn't reliably honor that: it copied the GGCN and GABAY
+     * "(reference — merged above)" sub-entries into the output verbatim,
+     * on top of the correctly-merged entry already covering them, and would
+     * have done the same for the cut Orion project. Same pattern as the
+     * Skills-splice and Contact-section fixes elsewhere in this file: don't
+     * trust the model to reliably follow a subtle exclusion rule when a
+     * deterministic filter can guarantee it before the content ever reaches
+     * the prompt.
+     */
+    private function stripReferenceOnlyBlocks(string $sections): string
+    {
+        return trim(preg_replace('/\n#{2,6}[^\n]*\breference\b[^\n]*\n.*?(?=\n#{1,6}\s|\z)/is', '', "\n{$sections}"));
     }
 
     /**
@@ -235,6 +259,35 @@ class ResumeTailoringService
         }
 
         return $kept !== [] ? implode("\n\n", $kept) : $portfolioContent;
+    }
+
+    /**
+     * Defensive post-processing on the model's raw Experience/Projects
+     * output. The prompt tells the model to "Stop after Projects" and never
+     * write a Skills section itself (Skills is spliced in separately,
+     * verbatim — see splitOffSkills()), but a real live run (2026-09-10
+     * smoke test, candidate #33 re-tailoring) showed it doesn't reliably
+     * stop there: it wrapped its output in a markdown code fence, then
+     * appended its own fabricated "## Skills" section after the closing
+     * fence — inventing skills lifted from the target posting's own
+     * wording ("React Native", "Generative AI tools") rather than the
+     * candidate's real skills. Same fabrication class Phase 3's original
+     * Skills-splice fix was built to prevent, just recurring past a
+     * different instruction ("stop here") instead of "don't invent
+     * skills". Two independent deterministic trims, not another prompt
+     * tweak: unwrap a code fence if present (drops anything outside it),
+     * then hard-truncate at the first "## Skills" heading the model
+     * produces on its own, if either survives.
+     */
+    private function sanitizeTailoredOutput(string $output): string
+    {
+        if (preg_match('/```(?:markdown)?\s*\n(.*?)\n```/is', $output, $matches)) {
+            $output = $matches[1];
+        }
+
+        $output = preg_replace('/\n##\s*Skills\b.*\z/is', '', $output);
+
+        return trim($output);
     }
 
     /**

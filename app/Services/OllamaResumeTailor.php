@@ -123,6 +123,11 @@ class OllamaResumeTailor implements ResumeTailor
             (2-4 entries most relevant to this posting, from SOURCE 1's Projects
             section — reorder/select for relevance, don't invent new ones)
 
+            An entry belongs in only ONE of these two sections — whichever
+            SOURCE 1 already lists it under. Never copy or duplicate the same
+            entry into both; never move a Projects entry into Experience (a
+            self-directed project is not paid work, even if it's substantial).
+
             Do NOT write a Skills section — that is appended separately,
             verbatim from the source, after your output. Stop after Projects.
 

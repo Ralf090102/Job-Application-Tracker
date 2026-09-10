@@ -91,9 +91,16 @@ class ResumeTailoringServiceTest extends TestCase
                         // ...Skills trimmed off entirely (spliced in
                         // verbatim afterward instead — see splitOffSkills)...
                         && ! str_contains($experienceAndProjects, 'Full-Stack Development')
-                        // ...but the actual Experience/Projects content,
-                        // including inline cut-annotations, survives.
-                        && str_contains($experienceAndProjects, 'Cut Project');
+                        // ...and anything marked reference-only is stripped
+                        // deterministically before the LLM ever sees it — see
+                        // stripReferenceOnlyBlocks(). Previously this content
+                        // survived extraction and relied on the model to
+                        // exclude it per the prompt's own instructions; a
+                        // real live run (2026-09-10 smoke test) showed a
+                        // local model doesn't reliably honor that.
+                        && ! str_contains($experienceAndProjects, 'Cut Project')
+                        // ...but the actual current content survives.
+                        && str_contains($experienceAndProjects, 'WiQAS');
                 })
                 ->andReturn("# Test Candidate\ntest@example.com\n\n## Experience\n- Built things.\n\n## Projects\n- Shipped things.");
         });
@@ -190,5 +197,100 @@ class ResumeTailoringServiceTest extends TestCase
 
         // Still falls back to sending the whole note, just no longer silently.
         $this->assertSame($malformed, $result);
+    }
+
+    public function test_strips_reference_only_blocks_regardless_of_heading_level(): void
+    {
+        // Regression for the 2026-09-10 smoke-test finding: a real tailored
+        // resume (candidate #33) shipped two nonprofit-site entries twice
+        // (once correctly merged, once again from a "(reference — merged
+        // above)" sub-entry) because extraction sent both to the LLM and
+        // trusted it to exclude the second per the prompt's own
+        // instructions — it didn't. Covers a "###"-level heading too, not
+        // just "####", since the real bug involved both levels.
+        $note = <<<'MD'
+            ### Experience
+
+            #### Kept Entry
+            - This one has no reference marker and must survive.
+
+            #### Old Entry (Private Repo) *(reference — merged above)*
+            - This one must never reach the LLM.
+
+            ### Projects
+
+            ### Also Cut *(kept here for reference/future re-tailoring)*
+            - A "###"-level reference block must be stripped too.
+
+            #### Still Kept
+            - This one comes after a stripped block and must survive.
+
+            ## Open questions / TODO
+            - [ ] Must never leak either.
+            MD;
+
+        $service = app(ResumeTailoringService::class);
+        $method = new \ReflectionMethod($service, 'extractCoreResumeSections');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($service, $note);
+
+        $this->assertStringContainsString('Kept Entry', $result);
+        $this->assertStringContainsString('Still Kept', $result);
+        $this->assertStringNotContainsString('Old Entry', $result);
+        $this->assertStringNotContainsString('Also Cut', $result);
+        $this->assertStringNotContainsString('Open questions', $result);
+    }
+
+    public function test_sanitizes_a_fenced_response_with_a_fabricated_trailing_skills_section(): void
+    {
+        // Regression for the 2026-09-10 smoke-test finding: a real
+        // re-tailoring run (candidate #33) wrapped its output in a code
+        // fence, then appended its own fabricated "## Skills" section
+        // after the closing fence with skills lifted from the posting's
+        // own wording rather than the candidate's real ones. Both must be
+        // dropped — the real Skills section is spliced in separately by
+        // the caller, verbatim from the source, never from the model.
+        $llmOutput = <<<'MD'
+            ```
+            # Test Candidate
+            test@example.com
+
+            ## Experience
+            - Built things.
+
+            ## Projects
+            - Shipped things.
+            ```
+            The skills section is:
+
+            ## Skills
+            - React Native
+            - Generative AI tools
+            MD;
+
+        $service = app(ResumeTailoringService::class);
+        $method = new \ReflectionMethod($service, 'sanitizeTailoredOutput');
+        $method->setAccessible(true);
+
+        $result = $method->invoke($service, $llmOutput);
+
+        $this->assertStringContainsString('## Experience', $result);
+        $this->assertStringContainsString('## Projects', $result);
+        $this->assertStringNotContainsString('```', $result);
+        $this->assertStringNotContainsString('React Native', $result);
+        $this->assertStringNotContainsString('Generative AI tools', $result);
+        $this->assertStringNotContainsString('The skills section is', $result);
+    }
+
+    public function test_sanitize_is_a_no_op_on_a_well_formed_response(): void
+    {
+        $service = app(ResumeTailoringService::class);
+        $method = new \ReflectionMethod($service, 'sanitizeTailoredOutput');
+        $method->setAccessible(true);
+
+        $wellFormed = "# Test Candidate\ntest@example.com\n\n## Experience\n- Built things.\n\n## Projects\n- Shipped things.";
+
+        $this->assertSame($wellFormed, $method->invoke($service, $wellFormed));
     }
 }
