@@ -1,6 +1,6 @@
 ---
 name: jat-review-queue
-description: Review Job Application Tracker auto-apply candidates that are ready_for_review — present each one's posting summary, match reasoning, and tailored resume vs. its base variant, get an explicit approve/reject/edit decision, and on approval drive claude-in-chrome to fill (never silently submit) the real Indeed Easy Apply form. Invoke as /jat-review-queue.
+description: Review Job Application Tracker auto-apply candidates that are ready_for_review — present each one's posting summary, match reasoning, and tailored resume vs. its base variant, get an explicit approve/reject/edit decision, and on approval drive claude-in-chrome to fill (never silently submit) the real Indeed Easy Apply form. On a real successful submit, also logs the application into Eru's Job-Applications.md. Invoke as /jat-review-queue.
 ---
 
 # jat-review-queue
@@ -58,6 +58,10 @@ just wherever they're mentioned:
   in that browser session (this skill does not log in on their behalf).
 - `ERU_VAULT_PATH` readable from `.env`, for reading each resume variant's
   base source Markdown (`{ERU_VAULT_PATH}/02-Areas/Career/Resumes/Resume-{variant}.md`).
+- The `eru` MCP tool (registered at Claude Code user scope, so it's
+  available in this repo's session automatically) — used in Step 8 to
+  log each successful submission into
+  `02-Areas/Career/Job-Applications.md`.
 
 ## Step 1 — Check today's cap, then fetch the queue
 
@@ -228,3 +232,39 @@ queue for the rest of today** — do not attempt further candidates'
 submits once the cap is hit, even if more remain `ready_for_review`.
 Reviewing/rejecting/editing remaining candidates is
 still fine; only the submit step is capped.
+
+## Step 8 — Log the application to Eru
+
+Only after the submit API call in Step 7 actually succeeded (a real
+`JobApplication` now exists) — never before. This step is best-effort
+bookkeeping, not part of the real transaction: if any part of it fails,
+tell the human plainly and move on to the next candidate. Never treat a
+failure here as a reason to doubt or redo the real submission that
+already happened.
+
+1. Read `{ERU_VAULT_PATH}/02-Areas/Career/Job-Applications.md`.
+2. Build one new row for the **Active** table from this candidate /
+   the `JobApplication` just created:
+
+   | Eru column | Source | Notes |
+   |---|---|---|
+   | Role | `role` | as-is |
+   | Company | `company` | plain text, no wikilink — auto-applied candidates don't get a per-posting Eru detail note (that only happens later if the posting progresses to interview/red-flag) |
+   | Status | — | always `applied` |
+   | Salary | `salary_min`/`salary_max` | `₱{min}–{max}/mo` if both present; `Not stated` if either is null |
+   | Work Mode | `work_mode` | map: `onsite`→`On-site`, `remote`→`WFH`, `hybrid`→`Hybrid` |
+   | Location | `location` | as-is |
+   | Date Applied | — | today's date (`YYYY-MM-DD`), Asia/Manila |
+   | Source | — | always `Indeed` (Step 4 already restricts this automated path to indeed.com) |
+   | Description | candidate's `match_reasoning` | condense to one short clause (~8-12 words, matching the table's existing style) — summarize, don't paste the full reasoning verbatim |
+
+3. Insert the row as the **last** row of the Active table (keeps the
+   file's existing chronological-ascending order) and update the
+   `### Active (N)` heading to the new row count.
+4. Apply the edit with an `eru` MCP write op — `str_replace_in_note`
+   against the current heading + last-row text is usually cleanest;
+   fall back to `write_note` if the file's shape doesn't match what was
+   just read. This is a routine Eru vault write; no permission prompt
+   needed.
+5. Tell the human it's logged (or, on failure, exactly what went wrong)
+   before moving to the next candidate in the queue.
