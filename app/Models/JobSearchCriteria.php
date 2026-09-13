@@ -26,6 +26,7 @@ class JobSearchCriteria extends Model
         'work_mode',
         'location',
         'avoid_if_rubric',
+        'exclude_seniority_keywords',
     ];
 
     protected function casts(): array
@@ -37,6 +38,7 @@ class JobSearchCriteria extends Model
             'salary_min' => 'integer',
             'salary_max' => 'integer',
             'work_mode' => WorkMode::class,
+            'exclude_seniority_keywords' => 'array',
         ];
     }
 }

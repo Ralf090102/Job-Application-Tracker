@@ -40,14 +40,25 @@ just wherever they're mentioned:
   (explicitly out of scope, JAT-Roadmap-AutoApply.md Decided Against) —
   it's just not behaving like a script hammering a form, which is a
   reasonable baseline regardless of whether anything is watching for it.
-- **Any CAPTCHA, verification challenge, unexpected redirect, rate-limit
-  page, unusually slow load, or otherwise anomalous page state — at any
-  point in Steps 4 through 7 — stops the run for this candidate
-  immediately.** Report exactly what you saw to the human. Never attempt
-  to solve, wait out, silently retry, or route around it. This is a hard
-  stop-and-report, not a retry-with-backoff — retrying a strange page
-  state automatically is itself the kind of bot-like behavior this rule
-  exists to avoid.
+- **A CAPTCHA or verification challenge specifically**: the human has an
+  automatic CAPTCHA-solver browser extension installed. Re-check the page
+  every ~10-15s, up to ~45-60s total, to give it a chance to clear the
+  challenge on its own. If it's gone on a re-check, tell the human it
+  appeared and cleared via the solver extension, then continue the flow
+  normally from where it stopped. If it's still present after that
+  window, fall back to the rule below — stop and report, don't wait
+  longer or retry further. This is about tolerating the human's own
+  separately-installed, disclosed tool doing its job — it is not
+  permission for you to attempt to solve or route around a CAPTCHA
+  yourself by any other means.
+- **An unexpected redirect, rate-limit page, unusually slow load, or any
+  other anomalous page state (including a CAPTCHA that didn't clear
+  above) — at any point in Steps 4 through 7 — stops the run for this
+  candidate immediately.** Report exactly what you saw to the human.
+  Never attempt to solve, wait out, silently retry, or route around it.
+  This is a hard stop-and-report, not a retry-with-backoff — retrying a
+  strange page state automatically is itself the kind of bot-like
+  behavior this rule exists to avoid.
 
 ## Prerequisites
 
@@ -61,7 +72,9 @@ just wherever they're mentioned:
 - The `eru` MCP tool (registered at Claude Code user scope, so it's
   available in this repo's session automatically) — used in Step 8 to
   log each successful submission into
-  `02-Areas/Career/Job-Applications.md`.
+  `02-Areas/Career/Job-Applications.md`, and in Step 5 to read/append
+  `02-Areas/Career/Screening-QA-Bank.md`, the non-fabricated screening
+  question answer bank.
 
 ## Step 1 — Check today's cap, then fetch the queue
 
@@ -163,16 +176,39 @@ copy it into a location the tool does accept. Don't guess which fallback
 to use — ask.
 
 **Any custom screening question — anything beyond the standard
-name/email/resume/phone fields Indeed itself always asks — stops the
-flow.** Present the exact question text to the human and ask them how to
-answer it. This applies no matter how simple or obviously-answerable the
-question looks ("Are you authorized to work in [location]?", a yes/no
-toggle, a number field) — never guess, ever, regardless of how
-low-stakes it seems. This is a hard rule, not a judgment call left to
-you in the moment.
+name/email/resume/phone fields Indeed itself always asks — check the
+answer bank before asking the human.** Read
+`{ERU_VAULT_PATH}/02-Areas/Career/Screening-QA-Bank.md`.
 
-Once every field is filled and every screening question has been
-answered by the human (not guessed), stop right before clicking the
+- **Confident match** — this question asks the same real-world fact as a
+  bank entry, not just similarly-worded: enter the stored answer,
+  rephrased only in wording/format to fit this exact question and field
+  type (yes/no toggle, number, free text) — never rephrased in
+  substance. Tell the human what was entered as you go; no pause needed.
+  **Exception: salary/compensation questions never auto-fill.** Surface
+  the stored figure(s) as context and get a quick live confirmation
+  first — these are posting-specific (local vs. remote/international,
+  currency) and a wrong number has real consequences.
+- **No confident match** — a genuinely new question, or you're not sure
+  a stored answer actually applies to this posting's context: present
+  the exact question text to the human and ask them how to answer it.
+  This applies no matter how simple or obviously-answerable the question
+  looks ("Are you authorized to work in [location]?", a yes/no toggle, a
+  number field) — never guess, ever, regardless of how low-stakes it
+  seems. This is a hard rule, not a judgment call left to you in the
+  moment.
+  - After the human answers: if this is a genuinely recurring type of
+    question (visa/work authorization, years of experience,
+    availability, English proficiency, notice period, and similar — not
+    something tied only to this one posting), append it to the
+    Screening-QA-Bank note via an `eru` MCP write, same pattern as Step
+    8's Eru writes, and tell the human it was saved for reuse. No
+    permission needed for this — it's a routine Eru vault write, same as
+    Step 8.
+
+Once every field is filled and every screening question has either been
+answered by the human or filled from a confident bank match (never
+guessed), stop right before clicking the
 final Submit button and re-read **THE ONE RULE** at the top of this file.
 
 ## Step 6 — The pre-submit confirmation gate

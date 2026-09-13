@@ -66,6 +66,11 @@ class JobSearchClient
                     'num_pages' => 1,
                     'country' => config('services.jsearch.country'),
                     'date_posted' => 'all',
+                    // Advisory only — JSearch's own experience-level tagging
+                    // is unreliable, so this just thins the pool before it
+                    // reaches AutoApplyIngestService's deterministic title
+                    // check, which is the real seniority guarantee.
+                    'job_requirements' => 'no_experience,under_3_years_experience',
                 ]);
         } catch (Throwable $e) {
             throw new JobSearchException("Couldn't reach JSearch at {$host}.", previous: $e);

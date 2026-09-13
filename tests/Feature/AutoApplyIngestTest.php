@@ -233,6 +233,46 @@ class AutoApplyIngestTest extends TestCase
         $response->assertOk()->assertJsonPath('matched', 1);
     }
 
+    public function test_skips_a_senior_titled_posting_using_the_default_keyword_list(): void
+    {
+        // No criteria row at all — the seniority filter still applies via
+        // its built-in default list, unlike every other deterministic check
+        // (which is a no-op with no criteria row). The matcher is never
+        // called: this rejects before the LLM rubric pass.
+        $this->mock(JobPostingMatcher::class, function ($mock) {
+            $mock->shouldNotReceive('evaluate');
+        });
+
+        $response = $this->postIngest([$this->rawPosting([
+            'job_title' => 'Senior Backend Developer',
+        ])]);
+
+        $response->assertOk()
+            ->assertJsonPath('matched', 0)
+            ->assertJsonPath('skipped_non_match', 1);
+        $this->assertDatabaseCount('auto_apply_candidates', 0);
+    }
+
+    public function test_a_criteria_rows_own_exclude_seniority_keywords_overrides_the_default_list(): void
+    {
+        // A custom list replaces, not adds to, the default — "Backend" here
+        // wouldn't be excluded by the built-in defaults at all.
+        JobSearchCriteria::factory()->create([
+            'exclude_seniority_keywords' => ['backend'],
+        ]);
+
+        $this->mock(JobPostingMatcher::class, function ($mock) {
+            $mock->shouldNotReceive('evaluate');
+        });
+
+        $response = $this->postIngest([$this->rawPosting(['job_title' => 'Backend Developer'])]);
+
+        $response->assertOk()
+            ->assertJsonPath('matched', 0)
+            ->assertJsonPath('skipped_non_match', 1);
+        $this->assertDatabaseCount('auto_apply_candidates', 0);
+    }
+
     public function test_dispatches_a_tailoring_job_for_each_matched_candidate(): void
     {
         // Regression: tailoring used to run synchronously inline, which

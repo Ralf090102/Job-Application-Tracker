@@ -27,7 +27,8 @@
             { "name": "query", "value": "software engineer in Philippines" },
             { "name": "num_pages", "value": "1" },
             { "name": "country", "value": "ph" },
-            { "name": "date_posted", "value": "week" }
+            { "name": "date_posted", "value": "week" },
+            { "name": "job_requirements", "value": "no_experience,under_3_years_experience" }
           ]
         },
         "sendHeaders": true,

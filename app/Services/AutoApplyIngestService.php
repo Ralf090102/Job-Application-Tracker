@@ -25,6 +25,19 @@ use Illuminate\Support\Facades\Log;
  */
 class AutoApplyIngestService
 {
+    /**
+     * Fallback used when a JobSearchCriteria row has no
+     * exclude_seniority_keywords of its own set. The user is entry-level;
+     * unlike salary/work_mode there is deliberately no "off" state for this
+     * check — a criteria row can override the list, not disable it.
+     *
+     * @var array<int, string>
+     */
+    private const DEFAULT_SENIORITY_EXCLUDE_KEYWORDS = [
+        'senior', 'sr.', 'lead', 'staff', 'principal',
+        'manager', 'director', 'head of', 'vp', 'chief',
+    ];
+
     public function __construct(private JobPostingMatcher $matcher) {}
 
     /**
@@ -195,6 +208,13 @@ class AutoApplyIngestService
 
     private function passesDeterministicMatch(array $posting, ?JobSearchCriteria $criteria): bool
     {
+        // Unlike every check below, this one has no "off" state — it still
+        // applies (via the default keyword list) even with no criteria row
+        // configured at all, since the user is entry-level regardless.
+        if (! $this->passesSeniorityFilter($posting['role'], $criteria)) {
+            return false;
+        }
+
         if ($criteria === null) {
             return true;
         }
@@ -225,6 +245,26 @@ class AutoApplyIngestService
         // hours_per_week isn't populated from JSearch yet (see normalize()),
         // so there's nothing to bound-check against hours_min/hours_max
         // until a posting actually supplies it.
+
+        return true;
+    }
+
+    /**
+     * Deterministic title-keyword reject for senior/lead/management roles —
+     * runs before the LLM rubric pass so a senior-titled posting never costs
+     * an Ollama call. Word-boundary, case-insensitive match against the raw
+     * job title (not posting_text/description), since that's where
+     * seniority is reliably signaled.
+     */
+    private function passesSeniorityFilter(string $role, ?JobSearchCriteria $criteria): bool
+    {
+        $keywords = $criteria?->exclude_seniority_keywords ?: self::DEFAULT_SENIORITY_EXCLUDE_KEYWORDS;
+
+        foreach ($keywords as $keyword) {
+            if (preg_match('/\b'.preg_quote($keyword, '/').'/i', $role) === 1) {
+                return false;
+            }
+        }
 
         return true;
     }
