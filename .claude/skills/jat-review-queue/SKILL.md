@@ -122,8 +122,32 @@ For the current candidate, show the human, in conversation:
 
 ## Step 3 — Get a decision: approve / reject / edit
 
-Ask explicitly which of the three the human wants for this candidate.
-Do not proceed on silence or an ambiguous answer — ask again.
+**First, check for a clear-cut non-match and auto-reject it without asking**
+(added 2026-09-13, at the human's explicit request — reject has no
+external effect, unlike the Submit gate this doesn't touch): if the
+posting requires a hard skill/technology the candidate has no real
+experience with (check the actual tailored resume/portfolio content, not
+a guess — e.g. a posting requiring 3+ years of Salesforce/Apex when
+nothing in the real background touches Salesforce), or it's a
+senior/lead/staff/principal/manager/director-level role the deterministic
+ingest-time filter didn't catch (an older queued candidate, or a title
+that slipped past the keyword list) — reject it immediately:
+
+```
+POST {APP_URL}/api/auto-apply/candidates/{id}/reject
+Header: X-Ingest-Token: {AUTO_APPLY_INGEST_TOKEN}
+```
+
+Tell the human what was rejected and why (one line), then move to the
+next candidate — no pause, no confirmation needed. This is for clear-cut
+cases only, verified against the candidate's real content, not a vibe
+call. Anything that's a genuine judgment call (a plausible but imperfect
+fit, an ambiguous title, partial skills overlap) still goes to the human
+per the normal flow below.
+
+For everything else, ask explicitly which of the three the human wants
+for this candidate. Do not proceed on silence or an ambiguous answer —
+ask again.
 
 - **Reject**:
   ```
